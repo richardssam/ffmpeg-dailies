@@ -1,0 +1,66 @@
+globals:
+  framerate: 24
+  width: 1920
+  height: 1080
+  output_codec: prores
+  font_size: 44
+  ffmpeg_bin: "/Users/sam/roots/ffmpeg-ocio-8.1/bin/ffmpeg"
+  font:
+    darwin: /System/Library/Fonts/Helvetica.ttc
+    linux: /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+    win32: C:/Windows/Fonts/arial.ttf
+  
+output_codecs:
+  h264_hq:
+    codec: libx264
+    crf: 18
+    preset: slow
+    pix_fmt: yuv420p10le
+  png_lossless:
+    codec: png
+    pix_fmt: rgba
+  prores:
+    codec: prores_ks
+    pix_fmt: yuv444p10le
+    profile: 4444
+    
+
+metadata:
+  "Notes": "Sample Note"
+  "Vendor Name": "Test Vendor"
+  "Show Title": "Sample Show"
+  "Date Delivered": "2026-02-26"
+
+slate:
+  template_image: "base_slate.exr"
+  thumbnail_enabled: true
+  fields:
+    "Show":
+      text: "{Show Title}"
+      x: 300
+      y: 200
+      font_size: 90
+    "Date":
+      text: "{Date Delivered}"
+      x: 300
+      y: 350
+    "Notes": "{Notes}" # Fallback to auto-layout if needed
+
+burnins:
+  layout:
+    lower_left: "{Notes}"
+    lower_center: "{Vendor Name}"
+    lower_right: "{frame}"
+    top_left: "{File Name}"
+    top_center: "{Show Title}"
+    top_right: "{Date Delivered}"
+  fonts:
+    lower_left: "/System/Library/Fonts/Helvetica.ttc"
+    lower_center: "/System/Library/Fonts/Helvetica.ttc"
+
+ocio:
+  enabled: true
+  config_path: "/Users/sam/git/ffmpeg-ocio-test/sourcemedia/studio-config-v1.0.0_aces-v1.3_ocio-v2.1_ns.ocio"
+  input_space: "ACEScg"
+  output_space: "sRGB - Display"
+  view: "ACES 1.0 - SDR Video"
