@@ -90,6 +90,9 @@ def parse_slate_config(config: Dict[str, Any], global_font_size: Optional[float]
         fields=parsed_fields,
         template_image=slate_cfg.get("template_image"),
         thumbnail_enabled=slate_cfg.get("thumbnail_enabled", True),
+        thumbnail_x=slate_cfg.get("thumbnail_x"),
+        thumbnail_y=slate_cfg.get("thumbnail_y"),
+        thumbnail_width=slate_cfg.get("thumbnail_width"),
         global_font_size=global_font_size
     )
 

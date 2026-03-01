@@ -5,7 +5,8 @@ A Python toolkit for generating VFX dailies with slate overlays, burn-ins, and O
 ## Features
 
 - **Slate generation** — configurable title card with metadata fields and a PIP thumbnail from the middle of the clip
-- **Burn-in overlays** — frame counter, filename, show title, notes, and vendor text at configurable screen positions
+- **Burn-in overlays** — frame counter, filename, shot, show title, notes, and vendor text at configurable screen positions
+- **GUI Layout Editor** — visual web-based editor to drag and drop slate fields and preview layouts in real-time
 - **OCIO colour management** — uses FFmpeg's `ocio` filter with any ACES or studio config
 - **YAML-driven layout** — all visual elements, codecs, and metadata are defined in a single config file
 - **Python API** — call `ffmpeg_dailies.render()` directly from ShotGrid, Nuke, or any Python environment
@@ -30,13 +31,24 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### Visual Layout Editor (NEW)
+
+Launch the web-based GUI to edit your `sample_config.yaml` and preview slate fields visually.
+
+```bash
+python -m ffmpeg_dailies.gui --config sample_config.yaml --input /path/to/media.mov
+```
+Open `http://localhost:8080` to drag fields, edit text templates, and save layout changes back to your YAML.
+
 ### Run via CLI
 
 ```bash
 ./run_dailies \
   --config sample_config.yaml \
   --input /path/to/sequence.%04d.exr \
-  --output dailies_output.mov
+  --output dailies_output.mov \
+  --meta-shot RAP_090 \
+  --meta-vendor "My Studio"
 ```
 
 ### Run via Python API
@@ -50,10 +62,11 @@ cmd = ffmpeg_dailies.render(
     output_media="dailies_output.mov",
     metadata={
         "Show Title": "My Show",
+        "Shot": "RAP_090",
         "Notes": "WIP - internal review",
         "Vendor Name": "Studio X",
     },
-    dry_run=False  # Set True to get the command without executing
+    dry_run=False
 )
 ```
 
@@ -66,8 +79,8 @@ usage: run_dailies [-h] --config CONFIG --input INPUT --output OUTPUT
                    [--target-height TARGET_HEIGHT] [--start-number START_NUMBER]
                    [--fit] [--dry-run]
                    [--meta-notes META_NOTES] [--meta-vendor META_VENDOR]
-                   [--meta-filename META_FILENAME] [--meta-show META_SHOW]
-                   [--meta-date META_DATE]
+                   [--meta-shot META_SHOT] [--meta-filename META_FILENAME]
+                   [--meta-show META_SHOW] [--meta-date META_DATE]
 ```
 
 | Flag | Description |
@@ -76,14 +89,11 @@ usage: run_dailies [-h] --config CONFIG --input INPUT --output OUTPUT
 | `--input`, `-i` | Input media path — QuickTime or image sequence using `%04d` or `@@@` notation (required) |
 | `--output`, `-o` | Output file path (required) |
 | `--framerate`, `-r` | Override input framerate (default: from config or `24`) |
-| `--input-width` | Override input width (default: `1920`) |
-| `--input-height` | Override input height (default: `1080`) |
-| `--target-width` | Override target delivery width (default: from config) |
-| `--target-height` | Override target delivery height (default: from config) |
-| `--start-number` | Start frame number for image sequences |
 | `--fit` | Preserve aspect ratio by padding instead of stretching |
 | `--dry-run` | Print the FFmpeg command without executing it |
-| `--meta-*` | Override individual metadata fields (notes, vendor, filename, show, date) |
+| `--meta-shot` | **NEW**: Set the `{Shot}` metadata token |
+| `--meta-vendor` | Set the `{Vendor Name}` metadata token |
+| `--meta-*` | Override other metadata fields (notes, filename, show, date) |
 
 ## Configuration
 

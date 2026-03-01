@@ -1,2 +1,5 @@
 pyyaml
 fileseq
+fastapi
+uvicorn
+python-multipart

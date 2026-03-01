@@ -81,6 +81,9 @@ class SlateConfig:
     fields: Dict[str, SlateField]
     template_image: Optional[str] = None
     thumbnail_enabled: bool = True
+    thumbnail_x: Optional[int] = None
+    thumbnail_y: Optional[int] = None
+    thumbnail_width: Optional[int] = None
     global_font_size: Optional[float] = None
 
 @dataclasses.dataclass

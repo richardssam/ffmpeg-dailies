@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FFmpeg Dailies Slate Editor</title>
+
+    <!-- Load Fabric.js for Canvas Manipulation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #1e1e1e;
+            --panel-bg: #2d2d2d;
+            --text-main: #ffffff;
+            --text-muted: #a0a0a0;
+            --accent: #007acc;
+            --accent-hover: #0098ff;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            overflow: auto;
+        }
+
+        .canvas-container-wrapper {
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .sidebar {
+            width: 350px;
+            background-color: var(--panel-bg);
+            border-left: 1px solid #444;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 1.2rem;
+            font-weight: 600;
+            border-bottom: 1px solid #444;
+            padding-bottom: 10px;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+            background: #252525;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #333;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .control-row>div {
+            flex: 1;
+        }
+
+        input[type="number"],
+        textarea,
+        select {
+            width: 100%;
+            background: #111;
+            border: 1px solid #444;
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+
+        input[type="number"]:focus,
+        textarea:focus,
+        select:focus {
+            outline: auto;
+            border-color: var(--accent);
+        }
+
+        button {
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.95rem;
+            transition: background 0.2s;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+
+        button:hover {
+            background-color: var(--accent-hover);
+        }
+
+        .btn-secondary {
+            background-color: #444;
+        }
+
+        .btn-secondary:hover {
+            background-color: #555;
+        }
+
+        #status-msg {
+            margin-top: auto;
+            font-size: 0.85rem;
+            color: #4CAF50;
+            text-align: center;
+            min-height: 20px;
+        }
+
+        #accurate-preview-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            pointer-events: none;
+            /* Let clicks pass through */
+            z-index: 10;
+            display: none;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            color: white;
+            font-weight: bold;
+            display: none;
+        }
+
+        /* Utility to hide elements cleanly */
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="main-content">
+        <div class="canvas-container-wrapper" id="canvas-wrapper">
+            <canvas id="slate-canvas"></canvas>
+            <div id="accurate-preview-overlay"></div>
+            <div id="loading" class="loading-overlay">Rendering...</div>
+        </div>
+    </div>
+
+    <div class="sidebar">
+        <h2>Properties</h2>
+
+        <div id="selection-properties">
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0;">Select an element on the canvas to
+                edit its properties.</p>
+        </div>
+
+        <div class="control-group hidden" id="edit-panel">
+            <label id="active-element-name">Element</label>
+            <div class="control-row">
+                <div>
+                    <label>X Position</label>
+                    <input type="number" id="prop-x" step="1">
+                </div>
+                <div>
+                    <label>Y Position</label>
+                    <input type="number" id="prop-y" step="1">
+                </div>
+            </div>
+
+            <div id="text-controls" class="hidden">
+                <div class="control-row">
+                    <div>
+                        <label>Font Size</label>
+                        <input type="number" id="prop-fontsize" step="1" min="1">
+                    </div>
+                </div>
+                <div>
+                    <label>Template Variable</label>
+                    <input type="text" id="prop-template">
+                </div>
+                <div style="margin-top: 10px;">
+                    <label>Substituted Value</label>
+                    <textarea id="prop-text" rows="3" style="resize: vertical;"></textarea>
+                </div>
+            </div>
+
+            <div id="image-controls" class="hidden">
+                <div class="control-row">
+                    <div>
+                        <label>Width</label>
+                        <input type="number" id="prop-width" step="1" min="10">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="flex: 1;"></div>
+
+        <div class="control-group" style="background: none; border: none; padding: 0;">
+            <button id="btn-preview-toggle" class="btn-secondary">Show Accurate FFmpeg Preview</button>
+            <button id="btn-save">Save Configuration</button>
+        </div>
+
+        <div id="status-msg"></div>
+    </div>
+
+    <script>
+        // Global State
+        let canvas;
+        let originalState = {};
+        let configMetadata = {};
+        let activeKeyId = null;
+        let isShowingFFmpegPreview = false;
+        let hasUnsavedChanges = false;
+        let lastPreviewUrl = null;
+
+        function evaluateTemplate(str, dict) {
+            if (!str || !str.includes('{')) return str;
+            // Also handle FFmpeg %{n} implicitly by leaving it alone or formatting it if needed,
+            // but for GUI preview purposes we'll just format {Tokens}.
+            return str.replace(/\{([^}]+)\}/g, function (match, inner) {
+                return dict[inner] !== undefined ? dict[inner] : match;
+            });
+        }
+
+        // DOM Elements
+        const propX = document.getElementById('prop-x');
+        const propY = document.getElementById('prop-y');
+        const propFontSize = document.getElementById('prop-fontsize');
+        const propTemplate = document.getElementById('prop-template');
+        const propText = document.getElementById('prop-text');
+        const propWidth = document.getElementById('prop-width');
+        const editPanel = document.getElementById('edit-panel');
+        const selectionProperties = document.getElementById('selection-properties');
+        const elementNameLabel = document.getElementById('active-element-name');
+        const textControls = document.getElementById('text-controls');
+        const imageControls = document.getElementById('image-controls');
+
+        const loader = document.getElementById('loading');
+        const previewOverlay = document.getElementById('accurate-preview-overlay');
+        const btnTogglePreview = document.getElementById('btn-preview-toggle');
+        const btnSave = document.getElementById('btn-save');
+        const statusMsg = document.getElementById('status-msg');
+
+        async function init() {
+            // Fetch configuration state
+            const res = await fetch('/api/state');
+            originalState = await res.json();
+            configMetadata = originalState.metadata || {};
+
+            const w = originalState.dimensions.width;
+            const h = originalState.dimensions.height;
+
+            // Setup Canvas
+            canvas = new fabric.Canvas('slate-canvas', {
+                width: w,
+                height: h,
+                backgroundColor: 'black'
+            });
+
+            // Try to load fast preview background
+            try {
+                const bgRes = await fetch('/api/preview/fast', { method: 'POST' });
+                if (bgRes.ok) {
+                    const blob = await bgRes.blob();
+                    const url = URL.createObjectURL(blob);
+                    fabric.Image.fromURL(url, function (img) {
+                        img.set({
+                            originX: 'left',
+                            originY: 'top'
+                        });
+                        canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas));
+                    });
+                }
+            } catch (e) {
+                console.warn("Could not load fast preview background", e);
+            }
+
+            // Populate Canvas Elements
+            Object.keys(originalState.fields).forEach(key => {
+                const field = originalState.fields[key];
+
+                // Set reasonable defaults if None
+                const x = field.x !== null ? field.x : w / 2;
+                const y = field.y !== null ? field.y : h / 2;
+                const fSize = field.font_size || 50;
+
+                const templateText = field.text || `{${key}}`;
+                const evaluatedText = evaluateTemplate(templateText, configMetadata);
+
+                // FFmpeg uses Bottom-Left origin for text, HTML Canvas uses Top-Left (ascent) by default.
+                // We've patched filtergraph.py to offset y by `+ascent` natively, so Canvas Top-Left == FFmpeg Canvas Top-Left!
+                const textObj = new fabric.Text(evaluatedText, {
+                    left: x,
+                    top: y,
+                    fontSize: fSize,
+                    fill: 'white',
+                    fontFamily: 'sans-serif',
+                    originX: 'left',
+                    originY: 'top',
+                    hasControls: true,
+                    hasBorders: true,
+                    transparentCorners: false,
+                    cornerColor: '#007acc',
+                    borderColor: '#007acc',
+                    // Disallow non-uniform scaling, we want users to change font-size
+                    lockScalingFlip: true,
+                    lockUniScaling: true
+                });
+
+                // Store metadata reference
+                textObj.id = key;
+                textObj.isText = true;
+                textObj.templateText = templateText;
+
+                canvas.add(textObj);
+            });
+
+            // Populate Thumbnail PIP if Enabled
+            if (originalState.thumbnail_enabled) {
+                // Default fallback if not defined in YAML or 0: Top Right 40% width
+                let thumbW = originalState.thumbnail_width;
+                if (!thumbW || thumbW <= 0) thumbW = Math.round(w * 0.4);
+
+                const thumbH = Math.round(thumbW * (9 / 16));
+                const thumbX = (originalState.thumbnail_x !== null && originalState.thumbnail_x !== undefined) ? originalState.thumbnail_x : w - thumbW - 50;
+                const thumbY = (originalState.thumbnail_y !== null && originalState.thumbnail_y !== undefined) ? originalState.thumbnail_y : 50;
+
+                const initThumb = (imgObj) => {
+                    const thumbGroup = new fabric.Group([imgObj], {
+                        left: thumbX,
+                        top: thumbY,
+                        lockUniScaling: true
+                    });
+
+                    thumbGroup.id = "thumbnail_pip";
+                    thumbGroup.isPIP = true;
+                    // Because it's an image, scale properties dynamically apply
+                    canvas.add(thumbGroup);
+                };
+
+                fetch('/api/preview/thumb').then(res => {
+                    if (!res.ok) throw new Error("Thumb failed");
+                    return res.blob();
+                }).then(blob => {
+                    const url = URL.createObjectURL(blob);
+                    fabric.Image.fromURL(url, function (img) {
+                        img.set({
+                            originX: 'center',
+                            originY: 'center',
+                            scaleX: thumbW / img.width,
+                            scaleY: thumbW / img.width
+                        });
+                        initThumb(img);
+                    });
+                }).catch(e => {
+                    console.log("Fallback to grey PIP box");
+                    // Overlay text
+                    const thumbLabel = new fabric.Text("Thumbnail PIP", {
+                        fontSize: 30,
+                        fill: 'white',
+                        fontFamily: 'sans-serif',
+                        originX: 'center',
+                        originY: 'center'
+                    });
+
+                    const thumbObj = new fabric.Rect({
+                        left: -thumbW / 2,
+                        top: -thumbH / 2,
+                        width: thumbW,
+                        height: thumbH,
+                        fill: 'rgba(100, 100, 100, 0.8)',
+                        stroke: '#007acc',
+                        strokeWidth: 2,
+                        originX: 'left',
+                        originY: 'top',
+                        cornerColor: '#007acc',
+                        borderColor: '#007acc',
+                        transparentCorners: false,
+                        lockUniScaling: true // Keep aspect ratio
+                    });
+
+                    const group = new fabric.Group([thumbObj, thumbLabel], {
+                        left: thumbX,
+                        top: thumbY,
+                        lockUniScaling: true
+                    });
+                    group.id = "thumbnail_pip";
+                    group.isPIP = true;
+                    canvas.add(group);
+                });
+            }
+
+            // Fit canvas to screen
+            scaleCanvasToFit();
+            window.addEventListener('resize', scaleCanvasToFit);
+
+            // Bind Canvas Events
+            canvas.on('selection:created', onObjectSelected);
+            canvas.on('selection:updated', onObjectSelected);
+            canvas.on('selection:cleared', onSelectionCleared);
+
+            canvas.on('object:moving', (e) => { updatePropsFromCanvas(e); hasUnsavedChanges = true; });
+            canvas.on('object:scaling', (e) => {
+                hasUnsavedChanges = true;
+                if (!e.target) return;
+
+                if (e.target.isText) {
+                    // When visually scaling text, update actual fontSize property
+                    const obj = e.target;
+                    obj.set({
+                        fontSize: obj.fontSize * obj.scaleX,
+                        scaleX: 1,
+                        scaleY: 1
+                    });
+                    updatePropsFromCanvas({ target: obj });
+                } else if (e.target.isPIP) {
+                    const obj = e.target;
+                    // For groups, scaling just multiplies dimensions
+                    updatePropsFromCanvas({ target: obj });
+                }
+            });
+
+            // Bind Panel Events
+            propX.addEventListener('input', () => { updateCanvasFromProps(); hasUnsavedChanges = true; });
+            propY.addEventListener('input', () => { updateCanvasFromProps(); hasUnsavedChanges = true; });
+            propFontSize.addEventListener('input', () => { updateCanvasFromProps(); hasUnsavedChanges = true; });
+            propTemplate.addEventListener('input', () => { updateCanvasFromProps(true); hasUnsavedChanges = true; });
+            propText.addEventListener('input', () => { updateCanvasFromProps(false); hasUnsavedChanges = true; });
+            propWidth.addEventListener('input', () => { updateCanvasFromProps(); hasUnsavedChanges = true; });
+
+            // Bind Buttons
+            btnSave.addEventListener('click', saveState);
+            btnTogglePreview.addEventListener('click', toggleFFmpegPreview);
+        }
+
+        function scaleCanvasToFit() {
+            const wrapper = document.getElementById('canvas-wrapper');
+            const mainContent = document.querySelector('.main-content');
+
+            const w = originalState.dimensions.width;
+            const h = originalState.dimensions.height;
+
+            // Leave 40px padding
+            const maxWidth = mainContent.clientWidth - 40;
+            const maxHeight = mainContent.clientHeight - 40;
+
+            const scale = Math.min(maxWidth / w, maxHeight / h);
+
+            wrapper.style.width = `${w * scale}px`;
+            wrapper.style.height = `${h * scale}px`;
+
+            // CSS scale the canvas container wrapper (Fabric handles events properly via lower-canvas)
+            // It's cleaner to use zoom on the wrapper for absolute positioning 
+            const canvasContainer = document.querySelector('.canvas-container');
+            canvasContainer.style.transform = `scale(${scale})`;
+            canvasContainer.style.transformOrigin = 'top left';
+        }
+
+        function onObjectSelected(e) {
+            const obj = e.selected[0];
+            if (!obj) return;
+
+            activeKeyId = obj.id;
+
+            selectionProperties.classList.add('hidden');
+            editPanel.classList.remove('hidden');
+
+            elementNameLabel.textContent = `Field: ${obj.id}`;
+
+            textControls.classList.toggle('hidden', !obj.isText);
+            imageControls.classList.toggle('hidden', !obj.isPIP);
+
+            updatePropsFromCanvas({ target: obj });
+        }
+
+        function onSelectionCleared() {
+            activeKeyId = null;
+            selectionProperties.classList.remove('hidden');
+            editPanel.classList.add('hidden');
+        }
+
+        function updatePropsFromCanvas(e) {
+            const obj = e.target;
+            if (activeKeyId !== obj.id) return;
+
+            propX.value = Math.round(obj.left);
+            propY.value = Math.round(obj.top);
+
+            if (obj.isText) {
+                propFontSize.value = Math.round(obj.fontSize);
+                propTemplate.value = obj.templateText || "";
+                propText.value = obj.text || "";
+            } else if (obj.isPIP) {
+                propWidth.value = Math.round(obj.width * obj.scaleX);
+            }
+        }
+
+        function updateCanvasFromProps(fromTemplate = false) {
+            const obj = canvas.getActiveObject();
+            if (!obj) return;
+
+            obj.set({
+                left: parseInt(propX.value) || 0,
+                top: parseInt(propY.value) || 0
+            });
+
+            if (obj.isText) {
+                const newTemplate = propTemplate.value || "";
+                let newText = propText.value || "";
+
+                if (fromTemplate) {
+                    // Re-evaluate text based on new template
+                    newText = evaluateTemplate(newTemplate, configMetadata);
+                    propText.value = newText;
+                } else {
+                    // Update fallback metadata if it matches a template exactly
+                    const match = newTemplate.match(/^\{([^}]+)\}$/);
+                    if (match) {
+                        configMetadata[match[1]] = newText;
+                    }
+                }
+
+                obj.set({
+                    fontSize: parseInt(propFontSize.value) || 50,
+                    templateText: newTemplate,
+                    text: newText
+                });
+            } else if (obj.isPIP) {
+                const targetWidth = Math.max(10, parseInt(propWidth.value) || 768);
+                obj.set({
+                    scaleX: targetWidth / obj.width,
+                    scaleY: targetWidth / obj.width
+                });
+            }
+
+            canvas.renderAll();
+        }
+
+        function generateExportPayload() {
+            const payload = { fields: {}, thumbnail: null, metadata: {} };
+
+            // Determine metadata that was directly modified in the session
+            // To be precise, we diff configMetadata against originalState, 
+            // but for simplicity we can just save any config metadata that matches active elements.
+
+            const objects = canvas.getObjects();
+            objects.forEach(obj => {
+                if (obj.isText) {
+                    payload.fields[obj.id] = {
+                        x: Math.round(obj.left),
+                        y: Math.round(obj.top),
+                        font_size: Math.round(obj.fontSize),
+                        text: obj.templateText
+                    };
+
+                    const match = obj.templateText.match(/^\{([^}]+)\}$/);
+                    if (match && configMetadata[match[1]] !== undefined) {
+                        payload.metadata[match[1]] = obj.text;
+                    }
+                } else if (obj.isPIP) {
+                    payload.thumbnail = {
+                        x: Math.round(obj.left),
+                        y: Math.round(obj.top),
+                        width: Math.round(obj.width * obj.scaleX)
+                    };
+                }
+            });
+
+            return payload;
+        }
+
+        async function saveState() {
+            const payload = generateExportPayload();
+            btnSave.textContent = "Saving...";
+
+            try {
+                const res = await fetch('/api/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    showStatus("Configuration saved successfully!");
+                } else {
+                    const text = await res.text();
+                    showStatus(`Error saving: ${text}`, true);
+                }
+            } catch (e) {
+                showStatus(`Connection error: ${e}`, true);
+            } finally {
+                btnSave.textContent = "Save Configuration";
+            }
+        }
+
+        async function toggleFFmpegPreview() {
+            if (isShowingFFmpegPreview) {
+                // Hide it
+                previewOverlay.style.display = 'none';
+                btnTogglePreview.textContent = 'Show Accurate FFmpeg Preview';
+                btnTogglePreview.classList.add('btn-secondary');
+                btnTogglePreview.classList.remove('btn-primary');
+                isShowingFFmpegPreview = false;
+
+                // Show canvas interactiveness again
+                document.querySelector('.canvas-container').style.opacity = '1';
+                return;
+            }
+
+            // Use Cache if no changes
+            if (!hasUnsavedChanges && lastPreviewUrl) {
+                previewOverlay.style.backgroundImage = `url(${lastPreviewUrl})`;
+                previewOverlay.style.display = 'block';
+                document.querySelector('.canvas-container').style.opacity = '0.0';
+
+                btnTogglePreview.textContent = 'Hide FFmpeg Preview';
+                btnTogglePreview.classList.remove('btn-secondary');
+                btnTogglePreview.style.backgroundColor = '#d32f2f'; // Red to indicate it's locking UI
+                isShowingFFmpegPreview = true;
+                return;
+            }
+
+            // Generate it
+            loader.style.display = 'flex';
+
+            // First, secretly save the state so FFmpeg uses the current UI positions
+            await saveState();
+
+            try {
+                const ts = new Date().getTime(); // cache bust
+                const res = await fetch(`/api/preview/ffmpeg?t=${ts}`, { method: 'POST' });
+
+                if (res.ok) {
+                    const blob = await res.blob();
+                    if (lastPreviewUrl) URL.revokeObjectURL(lastPreviewUrl); // cleanup
+                    lastPreviewUrl = URL.createObjectURL(blob);
+
+                    previewOverlay.style.backgroundImage = `url(${lastPreviewUrl})`;
+                    previewOverlay.style.display = 'block';
+
+                    // Dim canvas items behind it slightly, though the overlay is opaque anyway
+                    document.querySelector('.canvas-container').style.opacity = '0.0';
+
+                    btnTogglePreview.textContent = 'Hide FFmpeg Preview';
+                    btnTogglePreview.classList.remove('btn-secondary');
+                    btnTogglePreview.style.backgroundColor = '#d32f2f'; // Red to indicate it's locking UI
+                    isShowingFFmpegPreview = true;
+                    hasUnsavedChanges = false;
+                } else {
+                    const err = await res.json();
+                    showStatus(`Preview Error: ${err.detail}`, true);
+                }
+            } catch (e) {
+                showStatus(`Preview Error: ${e}`, true);
+            } finally {
+                loader.style.display = 'none';
+            }
+        }
+
+        function showStatus(msg, isError = false) {
+            statusMsg.textContent = msg;
+            statusMsg.style.color = isError ? '#f44336' : '#4CAF50';
+            setTimeout(() => {
+                if (statusMsg.textContent === msg) statusMsg.textContent = '';
+            }, 4000);
+        }
+
+        // Boot
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+
+</html>

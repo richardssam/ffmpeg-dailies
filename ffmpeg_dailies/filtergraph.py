@@ -73,19 +73,19 @@ def build_drawtext_filter(text: str, x: str, y: str, fontfile: str = None, fonts
 
 def resolve_burnin_text(template: str, ctx: DailiesContext) -> str:
     """
-    Resolves metadata placeholders (like {Show}) against the available token map, handling FFmpeg frame var logic.
+    Evaluates a string template (like '{frame}') dynamically using the given context.
     """
-    if not isinstance(template, str):
-        return str(template)
+    class SafeDict(dict):
+        def __missing__(self, key):
+            return '{' + key + '}'
+            
+    # Always include 'frame' as FFmpeg's active render variable %{n} or %{frame_num}
+    # For actual FFmpeg drawtext we must pass literal %{n} so drawtext updates per frame.
+    eval_dict = SafeDict(ctx.metadata)
+    eval_dict["frame"] = "%{n}"
     
-    fmt_dict = dict(ctx.metadata)
-    fmt_dict["frame"] = "%{frame_num}"
-    
-    try:
-        return template.format(**fmt_dict)
-    except KeyError as e:
-        print(f"Warning: Missing metadata key {e} in burnin template '{template}'")
-        return template
+    return template.format_map(eval_dict) if "{" in template else template
+    return template.format_map(eval_dict) if "{" in template else template
 
 def get_burnin_position(position: str) -> Tuple[str, str]:
     """
@@ -143,12 +143,24 @@ def build_slate_filtergraph(ctx: DailiesContext, mid_frame: int = 1) -> Tuple[st
         # and we'll handle the [0:v] split in build_ffmpeg_command. 
         # But for modularity, let's expect [thumb_stream] as the input here if PIP is enabled.
         
-        # Scale thumbnail to a reasonable size (e.g. 40% of slate width)
-        thumb_w = int(w * 0.4)
+        # Scale thumbnail to user-defined width, or a reasonable fallback (e.g. 40% of slate width)
+        thumb_w = ctx.slate_config.thumbnail_width or int(w * 0.4)
+        if thumb_w <= 0: thumb_w = int(w * 0.4)
         # Assuming 16:9 for default thumb height calculations
         thumb_h = int(thumb_w * (9/16)) 
         
-        pip_chain = f"[thumb_stream]select='eq(n\\,{mid_frame})',scale={thumb_w}:{thumb_h}:force_original_aspect_ratio=decrease"
+        crop_filter = ""
+        cw = ctx.input_settings.cropwidth
+        ch = ctx.input_settings.cropheight
+        cx = ctx.input_settings.cropx
+        cy = ctx.input_settings.cropy
+        if cw is not None and ch is not None:
+            crop_filter = f"crop={cw}:{ch}"
+            if cx is not None and cy is not None:
+                crop_filter += f":{cx}:{cy}"
+            crop_filter += ","
+            
+        pip_chain = f"[thumb_stream]select='eq(n\\,{mid_frame})',{crop_filter}scale={thumb_w}:{thumb_h}:force_original_aspect_ratio=decrease"
         
         # Apply OCIO if enabled
         ocio_filter = build_ocio_filter(ctx)
@@ -160,9 +172,9 @@ def build_slate_filtergraph(ctx: DailiesContext, mid_frame: int = 1) -> Tuple[st
         # Select the middle frame, scale it, and force 1 frame output 
         filters.append(pip_chain)
         
-        # Overlay the PIP onto the slate background (top right corner with padding)
-        pip_x = w - thumb_w - 50
-        pip_y = 50
+        # Overlay the PIP onto the slate background 
+        pip_x = ctx.slate_config.thumbnail_x if ctx.slate_config.thumbnail_x is not None else w - thumb_w - 50
+        pip_y = ctx.slate_config.thumbnail_y if ctx.slate_config.thumbnail_y is not None else 50
         filters.append(f"{current_out}[pip]overlay=x={pip_x}:y={pip_y}[slate_with_pip]")
         current_out = "[slate_with_pip]"
 
@@ -174,9 +186,15 @@ def build_slate_filtergraph(ctx: DailiesContext, mid_frame: int = 1) -> Tuple[st
     y_offset = h // 4
     spacing = 60
     
+    class SafeDict(dict):
+        def __missing__(self, key):
+            return '{' + key + '}'
+            
+    safe_metadata = SafeDict(ctx.metadata)
+    
     for key, field in ctx.slate_config.fields.items():
         text_template = field.text
-        val = text_template.format(**ctx.metadata) if "{" in text_template else text_template
+        val = text_template.format_map(safe_metadata) if "{" in text_template else text_template
         display_text = f"{key}: {val}" if not has_template else val # If using a graphical plate, keys are usually baked in, so just print the value. Unless it lacks x/y.
         
         # Determine X/Y coordinates
@@ -263,12 +281,15 @@ def build_video_filtergraph(ctx: DailiesContext, input_stream: str = "[0:v]") ->
         # apply font config if available based on pos, or use default
         font_file = ctx.burnin_config.fonts.get(pos, get_default_font(ctx))
         
+        # Cascading font size: burnin global -> globals -> fallback 40
+        font_size = ctx.burnin_config.global_font_size or ctx.globals_config.font_size or 40
+
         drawtexts.append(build_drawtext_filter(
             text=text,
             x=x,
             y=y,
             fontfile=font_file,
-            fontsize=40, # or configurable
+            fontsize=int(font_size),
             box=True, # added background box for readability against video
             start_number=ctx.input_settings.start_number
         ))

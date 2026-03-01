@@ -22,14 +22,39 @@ def get_middle_frame_index(input_path: str, is_sequence: bool = False, start_num
     """
     try:
         if is_sequence and start_number is not None:
-            # We can't easily ffprobe wildcards to get frame counts generically, 
-            # so we check the directory for matching files.
             base_dir = os.path.dirname(input_path)
-            # A simple heuristic: just count files in the directory for now, 
-            # or default to 1 if we can't determine it easily.
-            # For a robust production tool, fileseq sequence parsing would be used here.
-            files = [f for f in os.listdir(base_dir) if os.path.isfile(os.path.join(base_dir, f))]
-            return max(1, len(files) // 2)
+            if not base_dir:
+                base_dir = "."
+                
+            try:
+                import fileseq
+                # fileseq handles filtering by the pattern if passed an exact string
+                seq_list = fileseq.findSequencesOnDisk(input_path)
+                if seq_list:
+                    frames = list(seq_list[0].frameSet())
+                    if frames:
+                        return frames[len(frames) // 2]
+            except Exception:
+                pass
+                
+            # Fallback: robust sequence parsing 
+            import re
+            base_name = os.path.basename(input_path)
+            # Rip off the formatting padding (e.g. %04d, #, @)
+            prefix = re.split(r'[%#@]', base_name)[0]
+            
+            files = [f for f in os.listdir(base_dir) if f.startswith(prefix) and os.path.isfile(os.path.join(base_dir, f))]
+            frame_numbers = []
+            for f in files:
+                m = re.search(r'(\d+)\.[^.]+$', f)
+                if m:
+                    frame_numbers.append(int(m.group(1)))
+            
+            if frame_numbers:
+                frame_numbers.sort()
+                return frame_numbers[len(frame_numbers) // 2]
+                
+            return 1
             
         cmd = [
             "ffprobe", "-v", "error", "-select_streams", "v:0",
@@ -140,7 +165,10 @@ def build_ffmpeg_command(ctx: DailiesContext) -> list[str]:
             cmd.extend(["-preset", str(codec_profile.preset)])
             
         for k, v in codec_profile.profile_args.items():
-            cmd.extend([f"-{k}", str(v)])
+            if k == "profile":
+                cmd.extend(["-profile:v", str(v)])
+            else:
+                cmd.extend([f"-{k}", str(v)])
     else:
         # Generic encoder settings (could be pulled from config in the future)
         cmd.extend([

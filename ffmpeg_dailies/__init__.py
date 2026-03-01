@@ -6,7 +6,7 @@ import os
 from .config import load_config, parse_globals_config, parse_output_codecs, parse_ocio_settings, parse_slate_config, parse_burnin_config
 from .models import DailiesContext, InputSettings, OutputSettings
 from .execute import build_ffmpeg_command, run_ffmpeg
-from .utils import resolve_input
+from .utils import resolve_input, populate_implicit_metadata
 
 def render(
     config_path: str,
@@ -96,9 +96,7 @@ def render(
     if metadata:
         final_metadata.update(metadata)
         
-    # Implicitly extract filename if not explicitly provided
-    if "File Name" not in final_metadata:
-        final_metadata["File Name"] = os.path.basename(input_media)
+    final_metadata = populate_implicit_metadata(final_metadata, input_media)
 
     ocio_settings = parse_ocio_settings(raw_config)
     slate_config = parse_slate_config(raw_config, globals_config.font_size)

@@ -116,3 +116,97 @@ def test_render_visual_regression(tmp_path):
     # If the images are perfectly identical, getbbox() returns None.
     diff = ImageChops.difference(img_golden, img_test)
     assert diff.getbbox() is None, "Visual regression detected: test_render.png does not match golden_frame.png!"
+
+
+# -----------------------------------------------------------------------
+# Tests for implicit Date Delivered and Shot metadata
+# -----------------------------------------------------------------------
+
+def test_implicit_date_delivered_includes_time():
+    """
+    Validates that Date Delivered is auto-populated with both date and time
+    when not present in the metadata dict.
+    """
+    import datetime
+    from ffmpeg_dailies.utils import populate_implicit_metadata
+
+    metadata = populate_implicit_metadata({}, "my_seq.%04d.exr")
+
+    assert "Date Delivered" in metadata
+    # Format should be YYYY-MM-DD HH:MM
+    val = metadata["Date Delivered"]
+    # Verify it matches the format
+    datetime.datetime.strptime(val, "%Y-%m-%d %H:%M")
+    
+    # Time Delivered should NOT be present as a separate field
+    assert "Time Delivered" not in metadata
+
+
+def test_no_implicit_shot_extraction():
+    """
+    Validates that Shot is NOT automatically extracted from the path anymore.
+    """
+    from ffmpeg_dailies.utils import populate_implicit_metadata
+
+    metadata = populate_implicit_metadata(
+        {},
+        "/show/jp4/RAP_090/pix/comp/RAP_090_comp_v74/RAP_090_comp_v74.%04d.exr"
+    )
+    assert "Shot" not in metadata
+
+
+def test_explicit_shot_and_vendor_via_metadata():
+    """
+    Validates that Shot and Vendor Name can be supplied via metadata and resolves.
+    """
+    from ffmpeg_dailies.utils import populate_implicit_metadata
+
+    metadata = populate_implicit_metadata(
+        {"Shot": "RAP_090", "Vendor Name": "My Studio"},
+        "my_seq.%04d.exr"
+    )
+    assert metadata["Shot"] == "RAP_090"
+    assert metadata["Vendor Name"] == "My Studio"
+
+
+def test_frame_counter_not_escaped():
+    """
+    Validates that the {frame} token resolves to %{n} and is NOT escaped in the CLI.
+    """
+    config_path = os.path.join(os.path.dirname(__file__), "..", "sample_config.yaml")
+    cmd = render(
+        config_path=config_path,
+        input_media="test.%04d.exr",
+        output_media="out.mov",
+        dry_run=True
+    )
+    cmd_str = " ".join(cmd)
+    
+    # Check for the burn-in drawtext that should have %{n}
+    # It used to be \\\\%
+    assert "%{n}" in cmd_str
+    assert "\\\\%{" not in cmd_str
+
+def test_burnin_font_size_inheritance():
+    """
+    Validates that burn-ins inherit fontsize from globals.font_size if not specified.
+    """
+    import yaml
+    from ffmpeg_dailies.models import DailiesContext, GlobalsConfig, BurninConfig, SlateConfig, InputSettings, OutputSettings, OCIOSettings
+    from ffmpeg_dailies.filtergraph import build_video_filtergraph
+    
+    # Create a mock context
+    ctx = DailiesContext(
+        input_settings=InputSettings(path="test.mov", framerate="24", width=1920, height=1080, is_image_sequence=False),
+        output_settings=OutputSettings(path="out.mov", target_width=1280, target_height=720),
+        ocio_settings=OCIOSettings(),
+        slate_config=SlateConfig(fields={}),
+        burnin_config=BurninConfig(layout={"top_left": "Test"}),
+        metadata={},
+        globals_config=GlobalsConfig(font_size=55) # Custom global font size
+    )
+    
+    fg = build_video_filtergraph(ctx)
+    
+    # The burn-in should have fontsize=55
+    assert "fontsize=55" in fg

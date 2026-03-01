@@ -23,6 +23,7 @@ def parse_args():
     parser.add_argument("--meta-filename", help="File Name meta")
     parser.add_argument("--meta-show", help="Show Title meta")
     parser.add_argument("--meta-date", help="Date Delivered meta")
+    parser.add_argument("--meta-shot", help="Shot meta")
     parser.add_argument("--dry-run", action="store_true", help="Print the command without running it.")
 
     parser.add_argument("--fit", action="store_true", help="Preserve aspect ratio by padding", default=None)
@@ -38,10 +39,11 @@ def main():
 
     metadata = {}
     if args.meta_notes: metadata["Notes"] = args.meta_notes
-    if args.meta_vendor: metadata["Vendor Name"] = args.meta_vendor
+    if (args.meta_vendor): metadata["Vendor Name"] = args.meta_vendor
     if args.meta_filename: metadata["File Name"] = args.meta_filename
     if args.meta_show: metadata["Show Title"] = args.meta_show
-    if args.meta_date: metadata["Date Delivered"] = args.meta_date
+    if (args.meta_date): metadata["Date Delivered"] = args.meta_date
+    if (args.meta_shot): metadata["Shot"] = args.meta_shot
 
     cmd = render(
         config_path=args.config,
