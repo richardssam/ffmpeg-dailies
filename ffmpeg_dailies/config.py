@@ -2,7 +2,7 @@ import yaml
 import copy
 from typing import Dict, Any, Optional
 
-from .models import BurninConfig, SlateConfig, SlateField, OCIOSettings, GlobalsConfig, OutputCodecProfile
+from .models import BurninConfig, SlateConfig, SlateField, OCIOSettings, GlobalsConfig, OutputCodecProfile, DynamicMetadataConfig, MetadataRule
 
 def load_config(config_path: str) -> Dict[str, Any]:
     """
@@ -80,7 +80,10 @@ def parse_slate_config(config: Dict[str, Any], global_font_size: Optional[float]
                 text=val.get("text", ""),
                 x=str(val.get("x")) if "x" in val else None,
                 y=str(val.get("y")) if "y" in val else None,
-                font_size=val.get("font_size")
+                font_size=val.get("font_size"),
+                align=val.get("align", "left"),
+                max_width=int(val.get("max_width", 0)),
+                max_height=int(val.get("max_height", 0))
             )
         else:
             # Fallback simple string config
@@ -120,6 +123,27 @@ def parse_globals_config(config: Dict[str, Any]) -> GlobalsConfig:
         font_size=glbs.get("font_size"),
         ffmpeg_bin=glbs.get("ffmpeg_bin"),
         font=glbs.get("font")
+    )
+
+def parse_dynamic_metadata_config(config: Dict[str, Any]) -> DynamicMetadataConfig:
+    """
+    Parses the dynamic metadata rules from the YAML configuration.
+    """
+    dyn_meta = config.get("dynamic_metadata", {})
+    rules = []
+    raw_rules = dyn_meta.get("rules", [])
+    for r in raw_rules:
+        if isinstance(r, dict) and "target" in r and "source" in r:
+            rules.append(MetadataRule(
+                target=r["target"],
+                source=r["source"],
+                regex=r.get("regex"),
+                replace=r.get("replace")
+            ))
+    
+    return DynamicMetadataConfig(
+        enabled=dyn_meta.get("enabled", True),
+        rules=rules
     )
 
 def parse_output_codecs(config: Dict[str, Any]) -> Dict[str, OutputCodecProfile]:

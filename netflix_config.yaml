@@ -1,0 +1,198 @@
+globals:
+  framerate: 24
+  width: 1920
+  height: 1080
+  output_codec: prores
+  font_size: 30
+  ffmpeg_bin: /Users/sam/roots/ffmpeg-ocio-8.1/bin/ffmpeg
+  font:
+    darwin: /System/Library/Fonts/Helvetica.ttc
+    linux: /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+    win32: C:/Windows/Fonts/arial.ttf
+output_codecs:
+  h264_hq:
+    codec: libx264
+    crf: 18
+    preset: slow
+    pix_fmt: yuv420p10le
+  png_lossless:
+    codec: png
+    pix_fmt: rgba
+  prores:
+    codec: prores_ks
+    pix_fmt: yuv444p10le
+    profile: 4444
+metadata:
+  Notes: "Sample Note:\n * did this\n * Did something else.\n"
+  Vendor Name: Test Vendor
+  Shot Types: 2d comp
+  Submit For: richs128
+  Scope of work: Unknown
+  Shot Description: This is the shots description.
+  Episode: '101'
+  Sequence Name: '1'
+  Scene: '1'
+  Media Color: rec709 with show lut
+  Show Title: Sample Show
+  Date Delivered: 2026-02-27 14:05
+dynamic_metadata:
+  enabled: true
+  rules:
+  - target: Shot
+    source: File Name
+    regex: ^([A-Z0-9]+)
+  - target: Version
+    source: File Name
+    regex: _(v\d+)
+slate:
+  template_image: vfx-templates-blank-slate-0.0.6.jpg
+  thumbnail_enabled: true
+  fields:
+    Show:
+      text: '{Show Title}'
+      x: 190
+      y: 21
+      font_size: 58
+      align: left
+      max_width: 0
+      max_height: 0
+    Vendor:
+      text: '{Vendor Name}'
+      x: 1363
+      y: 502
+      font_size: 29
+      align: right
+      max_width: 545
+      max_height: 0
+    Date:
+      text: '{Date Delivered}'
+      x: 193
+      y: 175
+      font_size: 33
+      align: left
+      max_width: 576
+      max_height: 0
+    Notes:
+      text: '{Notes}'
+      x: 191
+      y: 490
+      font_size: 40
+      align: left
+      max_width: 887
+      max_height: 255
+    File Name:
+      text: '{File Name}'
+      x: 195
+      y: 109
+      font_size: 30
+      align: left
+      max_width: 767
+      max_height: 0
+    Version:
+      text: '{Version}'
+      x: 780
+      y: 106
+      font_size: 30
+      align: right
+      max_width: 337
+      max_height: 0
+    Frame Range:
+      text: '{Frame Range}'
+      x: 1364
+      y: 700
+      font_size: 30
+      align: right
+      max_width: 547
+      max_height: 0
+    Shot:
+      text: '{Shot}'
+      x: 1365
+      y: 539
+      font_size: 29
+      align: right
+      max_width: 543
+      max_height: 0
+    Shot Types:
+      text: '{Shot Types}'
+      x: 193
+      y: 246
+      font_size: 30
+      align: left
+      max_width: 657
+      max_height: 0
+    Episode:
+      text: '{Episode}'
+      x: 1364
+      y: 579
+      font_size: 30
+      align: right
+      max_width: 546
+      max_height: 0
+    Sequence Name:
+      text: '{Sequence Name}'
+      x: 1363
+      y: 622
+      font_size: 30
+      align: right
+      max_width: 546
+      max_height: 0
+    Scene:
+      text: '{Scene}'
+      x: 1362
+      y: 666
+      font_size: 30
+      align: right
+      max_width: 547
+      max_height: 0
+    Media Color:
+      text: '{Media Color}'
+      x: 1331
+      y: 737
+      font_size: 30
+      align: right
+      max_width: 576
+      max_height: 0
+    Submit For:
+      text: '{Submit For}'
+      x: 930
+      y: 36
+      font_size: 30
+      align: left
+      max_width: 576
+      max_height: 0
+    Scope of work:
+      text: '{Scope of work}'
+      x: 199
+      y: 428
+      font_size: 30
+      align: left
+      max_width: 894
+      max_height: 0
+    Shot Description:
+      text: '{Shot Description}'
+      x: 198
+      y: 322
+      font_size: 30
+      align: left
+      max_width: 911
+      max_height: 90
+  thumbnail_x: 1170
+  thumbnail_y: 48
+  thumbnail_width: 679
+burnins:
+  layout:
+    lower_left: '{Notes}'
+    lower_center: '{Vendor Name}'
+    lower_right: '{frame}'
+    top_left: '{File Name}'
+    top_center: '{Show Title}'
+    top_right: '{Date Delivered}'
+  fonts:
+    lower_left: /System/Library/Fonts/Helvetica.ttc
+    lower_center: /System/Library/Fonts/Helvetica.ttc
+ocio:
+  enabled: true
+  config_path: /Users/sam/git/ffmpeg-ocio-test/sourcemedia/studio-config-v1.0.0_aces-v1.3_ocio-v2.1_ns.ocio
+  input_space: ACEScg
+  output_space: sRGB - Display
+  view: ACES 1.0 - SDR Video

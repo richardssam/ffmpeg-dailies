@@ -1,6 +1,7 @@
 import pytest
 import os
 from ffmpeg_dailies import render
+from ffmpeg_dailies.models import DailiesContext, SlateConfig, SlateField, InputSettings, OutputSettings, OCIOSettings, BurninConfig
 
 def test_render_api_dry_run_resolves_metadata():
     """
@@ -210,3 +211,45 @@ def test_burnin_font_size_inheritance():
     
     # The burn-in should have fontsize=55
     assert "fontsize=55" in fg
+
+def test_slate_font_alignment_and_wrapping():
+    """
+    Validates that slates correctly wrap long text into multi-line drawtext filters
+    and apply the requested alignment expressions (e.g. right-align).
+    """
+    from ffmpeg_dailies.models import DailiesContext, SlateConfig, SlateField, InputSettings, OutputSettings, OCIOSettings
+    from ffmpeg_dailies.filtergraph import build_slate_filtergraph
+    
+    # A long description that should wrap at 300px with 50px font 
+    # (heuristic: ~27px per char, 300/27 = ~11 chars per line)
+    long_note = "This is a very long note that should definitely wrap."
+    
+    ctx = DailiesContext(
+        input_settings=InputSettings(path="test.mov", framerate="24", width=1920, height=1080, is_image_sequence=False),
+        output_settings=OutputSettings(path="out.mov", target_width=1280, target_height=720),
+        ocio_settings=OCIOSettings(),
+        slate_config=SlateConfig(fields={
+            "Notes": SlateField(text=long_note, max_width=300, align="right", y="500")
+        }),
+        burnin_config=BurninConfig(),
+        metadata={}
+    )
+    
+    fg, _ = build_slate_filtergraph(ctx)
+    
+    # Count how many drawtext filters are in the chain
+    # Each one starts with 'drawtext='
+    drawtext_count = fg.count("drawtext=")
+    
+    # Heuristic: ~52 chars. 11 chars per line. Should be at least 4 lines.
+    assert drawtext_count >= 4
+    
+    # Assert alignment expression for right align
+    assert "x=w-tw-10" in fg
+    
+    # Assert centered fallback for other fields if we had them or by checking default logic
+    # (Existing default was centered fallback)
+    assert "y=500" in fg 
+    # Check that Y increments (500 + 50 * 1.2 = 560)
+    assert "y=560" in fg
+

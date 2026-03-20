@@ -3,7 +3,7 @@ __all__ = ["render", "__version__"]
 
 import os
 
-from .config import load_config, parse_globals_config, parse_output_codecs, parse_ocio_settings, parse_slate_config, parse_burnin_config
+from .config import load_config, parse_globals_config, parse_output_codecs, parse_ocio_settings, parse_slate_config, parse_burnin_config, parse_dynamic_metadata_config
 from .models import DailiesContext, InputSettings, OutputSettings
 from .execute import build_ffmpeg_command, run_ffmpeg
 from .utils import resolve_input, populate_implicit_metadata
@@ -91,16 +91,17 @@ def render(
         fit=final_fit
     )
     
+    ocio_settings = parse_ocio_settings(raw_config)
+    dynamic_metadata_config = parse_dynamic_metadata_config(raw_config)
+    slate_config = parse_slate_config(raw_config, globals_config.font_size)
+    burnin_config = parse_burnin_config(raw_config, final_target_width, final_target_height, globals_config.font_size)
+    
     # Process metadata payload
     final_metadata = raw_config.get("metadata", {}).copy()
     if metadata:
         final_metadata.update(metadata)
         
-    final_metadata = populate_implicit_metadata(final_metadata, input_media)
-
-    ocio_settings = parse_ocio_settings(raw_config)
-    slate_config = parse_slate_config(raw_config, globals_config.font_size)
-    burnin_config = parse_burnin_config(raw_config, final_target_width, final_target_height, globals_config.font_size)
+    final_metadata = populate_implicit_metadata(final_metadata, input_media, dynamic_metadata_config)
     
     ctx = DailiesContext(
         input_settings=input_settings,
@@ -109,6 +110,7 @@ def render(
         slate_config=slate_config,
         burnin_config=burnin_config,
         metadata=final_metadata,
+        dynamic_metadata=dynamic_metadata_config,
         globals_config=globals_config,
         output_codecs=output_codecs
     )

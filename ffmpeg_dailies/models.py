@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 @dataclasses.dataclass
 class GlobalsConfig:
@@ -74,6 +74,23 @@ class SlateField:
     x: Optional[str] = None
     y: Optional[str] = None
     font_size: Optional[float] = None
+    align: str = "left"
+    max_width: int = 0
+    max_height: int = 0
+
+@dataclasses.dataclass
+class MetadataRule:
+    """A rule to dynamically derive one metadata field from another (or the input path) using regex."""
+    target: str
+    source: str  # "input_path" or a metadata key
+    regex: Optional[str] = None
+    replace: Optional[str] = None # Support for backreferences like \1
+
+@dataclasses.dataclass
+class DynamicMetadataConfig:
+    """Governs how metadata is automatically populated and extracted."""
+    enabled: bool = True
+    rules: List[MetadataRule] = dataclasses.field(default_factory=list)
 
 @dataclasses.dataclass
 class SlateConfig:
@@ -95,5 +112,6 @@ class DailiesContext:
     slate_config: SlateConfig
     burnin_config: BurninConfig
     metadata: Dict[str, str]
+    dynamic_metadata: DynamicMetadataConfig = dataclasses.field(default_factory=DynamicMetadataConfig)
     globals_config: GlobalsConfig = dataclasses.field(default_factory=GlobalsConfig)
     output_codecs: Dict[str, OutputCodecProfile] = dataclasses.field(default_factory=dict)

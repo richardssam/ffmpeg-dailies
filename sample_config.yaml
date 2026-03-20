@@ -26,9 +26,16 @@ metadata:
   Notes: "Sample Note:\n * did this\n * Did something else.\n"
   Vendor Name: Test Vendor
   Show Title: Sample Show
-  Version: v74
-  Shot: 'RAP_090'
   Date Delivered: 2026-02-27 14:05
+dynamic_metadata:
+  enabled: true
+  rules:
+  - target: Shot
+    source: File Name
+    regex: ^([A-Z0-9]+_[0-9]+)
+  - target: Version
+    source: File Name
+    regex: _(v\d+)
 slate:
   template_image: base_slate.exr
   thumbnail_enabled: true
@@ -38,41 +45,65 @@ slate:
       x: 140
       y: 139
       font_size: 90
+      align: left
+      max_width: 0
+      max_height: 0
     Vendor:
       text: 'Vendor:  {Vendor Name}'
-      x: 140
-      y: 560
+      x: 901
+      y: 675
       font_size: 30
+      align: left
+      max_width: 612
+      max_height: 46
     Date:
       text: '{Date Delivered}'
       x: 140
       y: 245
       font_size: 33
+      align: left
+      max_width: 0
+      max_height: 0
     Notes:
       text: '{Notes}'
       x: 140
       y: 640
       font_size: 30
+      align: left
+      max_width: 561
+      max_height: 141
     File Name:
       text: 'File: {File Name}'
       x: 140
-      y: 516
+      y: 517
       font_size: 30
+      align: left
+      max_width: 539
+      max_height: 47
     Version:
       text: '{Version}'
-      x: 1766
-      y: 534
+      x: 1616
+      y: 563
       font_size: 44
+      align: right
+      max_width: 231
+      max_height: 0
     Frame Range:
       text: 'Frames: {Frame Range}'
       x: 140
       y: 827
       font_size: 30
+      align: left
+      max_width: 0
+      max_height: 0
     Shot:
       text: '{Shot}'
       x: 140
       y: 332
       font_size: 57
+      align: left
+      max_width: 0
+      max_height: 0
   thumbnail_x: 1028
   thumbnail_y: 83
   thumbnail_width: 826

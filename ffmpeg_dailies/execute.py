@@ -6,29 +6,19 @@ from .models import DailiesContext
 from .filtergraph import build_slate_filtergraph, build_video_filtergraph
 
 logger = logging.getLogger(__name__)
+from .utils import get_video_frame_count
 
 def get_middle_frame_index(input_path: str, is_sequence: bool = False, start_number: int = None) -> int:
     """
     Calculates the middle frame index of the input media, used for the slate thumbnail selection.
     Relies on ffprobe for video container files or directory listing checks for image sequences.
-    
-    Args:
-        input_path: Path to the media file or the sequence pattern.
-        is_sequence: Whether the input implies an image sequence.
-        start_number: The starting frame number (if known) for a sequence context.
-        
-    Returns:
-        The calculated middle frame index (1-based offset relative to the stream). Falls back to 1 on failure.
     """
     try:
         if is_sequence and start_number is not None:
-            base_dir = os.path.dirname(input_path)
-            if not base_dir:
-                base_dir = "."
-                
+            # ... existing sequence logic ...
+            base_dir = os.path.dirname(input_path) or "."
             try:
                 import fileseq
-                # fileseq handles filtering by the pattern if passed an exact string
                 seq_list = fileseq.findSequencesOnDisk(input_path)
                 if seq_list:
                     frames = list(seq_list[0].frameSet())
@@ -40,7 +30,6 @@ def get_middle_frame_index(input_path: str, is_sequence: bool = False, start_num
             # Fallback: robust sequence parsing 
             import re
             base_name = os.path.basename(input_path)
-            # Rip off the formatting padding (e.g. %04d, #, @)
             prefix = re.split(r'[%#@]', base_name)[0]
             
             files = [f for f in os.listdir(base_dir) if f.startswith(prefix) and os.path.isfile(os.path.join(base_dir, f))]
@@ -56,33 +45,8 @@ def get_middle_frame_index(input_path: str, is_sequence: bool = False, start_num
                 
             return 1
             
-        cmd = [
-            "ffprobe", "-v", "error", "-select_streams", "v:0",
-            "-count_packets", "-show_entries", "stream=nb_read_packets,nb_frames,duration,r_frame_rate",
-            "-of", "json", input_path
-        ]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
-        data = json.loads(result.stdout)
-        stream = data.get("streams", [{}])[0]
-        
-        # Try nb_frames first
-        nb_frames = stream.get("nb_frames")
-        if nb_frames:
-            return int(nb_frames) // 2
-            
-        # Try nb_read_packets
-        nb_packets = stream.get("nb_read_packets")
-        if nb_packets:
-            return int(nb_packets) // 2
-            
-        # Try duration * fps
-        duration = float(stream.get("duration", 0))
-        fps_str = stream.get("r_frame_rate", "24/1")
-        num, den = map(int, fps_str.split('/'))
-        fps = num / den if den != 0 else 24
-        
-        frames = int(duration * fps)
-        return max(1, frames // 2)
+        count = get_video_frame_count(input_path)
+        return max(1, count // 2)
 
     except Exception as e:
         logger.warning(f"Could not determine middle frame, defaulting to 1. Error: {e}")
@@ -195,6 +159,8 @@ def run_ffmpeg(cmd: list[str]) -> None:
     """
     logger.info("Executing FFmpeg command:")
     logger.info(" ".join(cmd))
+    print("Executed ffmpeg command:")
+    print(" ".join(cmd))
     try:
         subprocess.run(cmd, check=True)
         logger.info("Success!")

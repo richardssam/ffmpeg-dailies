@@ -1,4 +1,5 @@
 import sys
+import textwrap
 from typing import List, Dict, Tuple, Optional
 from .models import DailiesContext, BurninConfig, SlateConfig
 
@@ -48,6 +49,28 @@ def escape_drawtext(text: str) -> str:
     """Escapes special characters specifically for FFmpeg's drawtext filter text parameter."""
     text = str(text).replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:")
     return text
+
+def wrap_text_heuristic(text: str, max_width: int, font_size: float) -> str:
+    """
+    Approximates text wrapping by injecting newlines using a character-width heuristic.
+    Average char width is assumed to be ~55% of font_size for typical sans-serif fonts.
+    """
+    if not max_width or max_width <= 0:
+        return text
+    
+    avg_char_w = font_size * 0.55
+    chars_per_line = max(1, int(max_width / avg_char_w))
+    
+    lines = []
+    # Preserve existing newlines while wrapping long blocks
+    for part in text.splitlines():
+        if not part:
+            lines.append("")
+            continue
+        wrapped = textwrap.fill(part, width=chars_per_line, break_long_words=True, replace_whitespace=False)
+        lines.append(wrapped)
+        
+    return "\n".join(lines)
 
 def build_drawtext_filter(text: str, x: str, y: str, fontfile: str = None, fontsize: int = 48, fontcolor: str = "white", box: bool = False, boxcolor: str = "black@0.5", boxborderw: int = 5, start_number: Optional[int] = None) -> str:
     """
@@ -195,31 +218,63 @@ def build_slate_filtergraph(ctx: DailiesContext, mid_frame: int = 1) -> Tuple[st
     for key, field in ctx.slate_config.fields.items():
         text_template = field.text
         val = text_template.format_map(safe_metadata) if "{" in text_template else text_template
-        display_text = f"{key}: {val}" if not has_template else val # If using a graphical plate, keys are usually baked in, so just print the value. Unless it lacks x/y.
+        display_text = f"{key}: {val}" if not has_template else val
         
-        # Determine X/Y coordinates
-        if field.x is not None:
-            x_pos = field.x
-        else:
-            x_pos = "(w-text_w)/2" # Centered fallback
-            
+        font_size = field.font_size or ctx.slate_config.global_font_size or 50
+        
+        # Apply wrapping heuristic
+        display_text = wrap_text_heuristic(display_text, field.max_width, font_size)
+        
+        # Determine base X/Y coordinates
         if field.y is not None:
-            y_pos = field.y
+            base_y = field.y
         else:
-            y_pos = str(y_offset)
+            base_y = str(y_offset)
             y_offset += spacing
             display_text = f"{key}: {val}" # Force key rendering on fallback layout
             
-        font_size = field.font_size or ctx.slate_config.global_font_size or 50
-        
-        dt_filter = build_drawtext_filter(
-            text=display_text,
-            x=x_pos,
-            y=y_pos,
-            fontfile=get_default_font(ctx),
-            fontsize=int(font_size)
-        )
-        drawtexts.append(dt_filter)
+        # Split into lines for individual alignment
+        lines = display_text.splitlines()
+        for i, line in enumerate(lines):
+            if not line: continue
+            
+            # Calculate Y for this line
+            # If base_y is a number (string or int), we can increment it. 
+            # If it's an expression like 'h/2', we append an offset.
+            try:
+                current_y = str(int(base_y) + int(i * font_size * 1.2))
+            except (ValueError, TypeError):
+                current_y = f"({base_y})+{int(i * font_size * 1.2)}"
+
+            # Determine X based on alignment
+            # If max_width is specified, alignment is relative to the box [x, x + max_width]
+            # Otherwise it's screen-relative (w) or x-relative (left)
+            mw = int(field.max_width or 0)
+            base_x = int(field.x or 0)
+            
+            if field.align == "center":
+                if mw > 0:
+                    x_pos = f"({base_x}+({mw}-tw)/2)"
+                else:
+                    x_pos = "(w-tw)/2"
+            elif field.align == "right":
+                if mw > 0:
+                    x_pos = f"({base_x}+{mw}-tw)"
+                else:
+                    x_pos = "w-tw-10"
+            elif field.x is not None:
+                x_pos = field.x
+            else:
+                x_pos = "(w-tw)/2" # Default to centered if no X and no align specified
+                
+            dt_filter = build_drawtext_filter(
+                text=line,
+                x=x_pos,
+                y=current_y,
+                fontfile=get_default_font(ctx),
+                fontsize=int(font_size)
+            )
+            drawtexts.append(dt_filter)
 
     if not drawtexts:
         filter_chain = ";".join(filters) + f";{current_out}copy[slate_out]"

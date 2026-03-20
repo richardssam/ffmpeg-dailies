@@ -10,7 +10,7 @@ import tempfile
 import subprocess
 from typing import Dict, Any, Optional
 
-from ffmpeg_dailies.config import load_config, parse_slate_config, parse_globals_config, parse_output_codecs, parse_ocio_settings
+from ffmpeg_dailies.config import load_config, parse_slate_config, parse_globals_config, parse_output_codecs, parse_ocio_settings, parse_dynamic_metadata_config
 from ffmpeg_dailies.models import DailiesContext, InputSettings, OutputSettings
 from ffmpeg_dailies.execute import get_middle_frame_index
 from ffmpeg_dailies.filtergraph import build_slate_filtergraph
@@ -56,6 +56,7 @@ async def get_state():
     # But we parse Globals for global_font_size fallbacks.
     glbs = parse_globals_config(raw_config)
     slate_cfg = parse_slate_config(raw_config, glbs.font_size)
+    dynamic_cfg = parse_dynamic_metadata_config(raw_config)
     
     # We want to return a serializable JSON payload of the fields
     payload_fields = {}
@@ -76,11 +77,15 @@ async def get_state():
             "y": y_val,
             "font_size": field.font_size or slate_cfg.global_font_size or 50,
             # Placeholder for future font_choice from UI dropdown
-            "font_file": "default" 
+            "font_file": "default",
+            "align": field.align if hasattr(field, "align") else "left",
+            "max_width": field.max_width if hasattr(field, "max_width") else 0,
+            "max_height": field.max_height if hasattr(field, "max_height") else 0,
         }
+
         
     metadata = raw_config.get("metadata", {}).copy()
-    metadata = populate_implicit_metadata(metadata, os.environ.get("FFMPEG_DAILIES_GUI_INPUT", ""))
+    metadata = populate_implicit_metadata(metadata, os.environ.get("FFMPEG_DAILIES_GUI_INPUT", ""), dynamic_cfg)
     
     for meta_key in metadata:
         if meta_key not in payload_fields and meta_key not in ["Notes", "Show Title", "Date Delivered", "Vendor Name"]:
@@ -136,6 +141,9 @@ async def save_state(payload: SavePayload = Body(...)):
         if "y" in updates: field_cfg["y"] = updates["y"]
         if "font_size" in updates: field_cfg["font_size"] = updates["font_size"]
         if "text" in updates: field_cfg["text"] = updates["text"]
+        if "align" in updates: field_cfg["align"] = updates["align"]
+        if "max_width" in updates: field_cfg["max_width"] = updates["max_width"]
+        if "max_height" in updates: field_cfg["max_height"] = updates["max_height"]
         
     if payload.thumbnail:
         if "x" in payload.thumbnail:
@@ -152,8 +160,31 @@ async def save_state(payload: SavePayload = Body(...)):
     if payload.metadata:
         if "metadata" not in raw_config:
             raw_config["metadata"] = {}
+            
+        # To avoid "baking in" dynamic defaults, we only save metadata if it differs 
+        # from what the dynamic default would be for the CURRENT input.
+        input_media = os.environ.get("FFMPEG_DAILIES_GUI_INPUT", "")
+        dynamic_cfg = parse_dynamic_metadata_config(raw_config)
+        
+        # We need a clean copy of the ORIGINAL metadata (before implicit population) 
+        # to know what was already there vs what we are adding now.
+        original_metadata = raw_config.get("metadata", {}).copy()
+        
+        # Calculate what the defaults WOULD be
+        current_defaults = populate_implicit_metadata({}, input_media, dynamic_cfg)
+        
         for k, v in payload.metadata.items():
-            raw_config["metadata"][k] = str(v)
+            val_str = str(v)
+            # Save if:
+            # 1. It was already explicitly in the YAML
+            # 2. OR it differs from the current dynamic default
+            if k in original_metadata or val_str != current_defaults.get(k):
+                raw_config["metadata"][k] = val_str
+            else:
+                # If it matches the default and wasn't there before, 
+                # make sure we don't save it (or remove it if it was accidentally added)
+                if k in raw_config["metadata"] and k not in original_metadata:
+                    del raw_config["metadata"][k]
     
     try:
         # Note: standard pyyaml will strip comments here.
@@ -267,7 +298,8 @@ async def get_ffmpeg_preview():
         input_media, resolved_start, is_image_sequence = resolve_input(input_media)
         
     metadata = raw_config.get("metadata", {}).copy()
-    metadata = populate_implicit_metadata(metadata, input_media)
+    dynamic_cfg = parse_dynamic_metadata_config(raw_config)
+    metadata = populate_implicit_metadata(metadata, input_media, dynamic_cfg)
         
     # Mock a context for the filtergraph builder
     ctx = DailiesContext(
