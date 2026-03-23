@@ -59,6 +59,12 @@ Open `http://localhost:8080` to drag fields, edit text templates, and save layou
   --meta-vendor "My Studio"
 ```
 
+### Run via Windows
+
+```bash
+python -m ffmpeg_dailies --config netflix_config.yaml --input "C:/path/to/sequence.%04d.exr"  --output "C:/path/to/windowstest_out.mov" --meta-shot RAP_090 --meta-vendor "My Studio"
+```
+
 ### Run via Python API
 
 ```python
