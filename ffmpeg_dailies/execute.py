@@ -1,7 +1,8 @@
-import subprocess
 import os
 import json
 import logging
+import re
+import fileseq
 from .models import DailiesContext
 from .filtergraph import build_slate_filtergraph, build_video_filtergraph
 
@@ -15,33 +16,11 @@ def get_middle_frame_index(input_path: str, is_sequence: bool = False, start_num
     """
     try:
         if is_sequence and start_number is not None:
-            # ... existing sequence logic ...
-            base_dir = os.path.dirname(input_path) or "."
-            try:
-                import fileseq
-                seq_list = fileseq.findSequencesOnDisk(input_path)
-                if seq_list:
-                    frames = list(seq_list[0].frameSet())
-                    if frames:
-                        return frames[len(frames) // 2]
-            except Exception:
-                pass
-                
-            # Fallback: robust sequence parsing 
-            import re
-            base_name = os.path.basename(input_path)
-            prefix = re.split(r'[%#@]', base_name)[0]
-            
-            files = [f for f in os.listdir(base_dir) if f.startswith(prefix) and os.path.isfile(os.path.join(base_dir, f))]
-            frame_numbers = []
-            for f in files:
-                m = re.search(r'(\d+)\.[^.]+$', f)
-                if m:
-                    frame_numbers.append(int(m.group(1)))
-            
-            if frame_numbers:
-                frame_numbers.sort()
-                return frame_numbers[len(frame_numbers) // 2]
+            seq_list = fileseq.findSequencesOnDisk(input_path)
+            if seq_list:
+                frames = list(seq_list[0].frameSet())
+                if frames:
+                    return frames[len(frames) // 2]
                 
             return 1
             
