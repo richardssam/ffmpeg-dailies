@@ -114,8 +114,8 @@ slate:
       max_height: 0
     Shot Types:
       text: '{Shot Types}'
-      x: 193
-      y: 246
+      x: 196
+      y: 253
       font_size: 30
       align: left
       max_width: 657
@@ -170,15 +170,15 @@ slate:
       max_height: 0
     Shot Description:
       text: '{Shot Description}'
-      x: 198
-      y: 322
+      x: 195
+      y: 312
       font_size: 30
       align: left
       max_width: 911
       max_height: 90
   thumbnail_x: 1170
   thumbnail_y: 48
-  thumbnail_width: 679
+  thumbnail_width: 681
 burnins:
   layout:
     lower_left: '{Notes}'

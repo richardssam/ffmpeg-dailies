@@ -2,6 +2,14 @@
 
 A Python toolkit for generating VFX dailies with slate overlays, burn-ins, and OCIO colour management — all driven by a single YAML configuration file and powered by FFmpeg.
 
+| Example slate | Example burn-ins |
+| :---: | :---: |
+| <img src="docs/netflix_sparks_slate.jpg" width="80%" alt="Example slate"> | <img src="docs/frame-burn-in.jpg" width="80%" alt="Example burn-ins"> |
+
+Slate Layout GUI to help position the slate fields:
+
+<img src="docs/GUI.gif" width="80%" alt="Slate Layout GUI">
+
 ## Features
 
 - **Slate generation** — configurable title card with metadata fields and a PIP thumbnail from the middle of the clip
@@ -18,8 +26,7 @@ A Python toolkit for generating VFX dailies with slate overlays, burn-ins, and O
 ### Prerequisites
 
 - Python 3.10+
-- FFmpeg (with `libx264` and optionally OCIO support)
-- An OCIO config file (if using colour management)
+- FFmpeg with `libx264` and OCIO support, see: <https://github.com/sam-k-smith/ffmpeg-build-ocio>
 
 ### Setup
 
@@ -38,6 +45,7 @@ Launch the web-based GUI to edit your `sample_config.yaml` and preview slate fie
 ```bash
 python -m ffmpeg_dailies.gui --config sample_config.yaml --input /path/to/media.mov
 ```
+
 Open `http://localhost:8080` to drag fields, edit text templates, and save layout changes back to your YAML.
 
 ### Run via CLI

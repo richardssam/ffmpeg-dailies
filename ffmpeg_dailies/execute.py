@@ -52,16 +52,9 @@ def get_middle_frame_index(input_path: str, is_sequence: bool = False, start_num
         logger.warning(f"Could not determine middle frame, defaulting to 1. Error: {e}")
         return 1
 
-def build_ffmpeg_command(ctx: DailiesContext) -> list[str]:
+def get_filter_complex(ctx: DailiesContext) -> str:
     """
-    Assembles the complete FFmpeg CLI command list from the resolved DailiesContext.
-    Connects the complex filtergraphs (slate + video) with input scaling, OCIO processing, and output encoding.
-    
-    Args:
-        ctx: The fully populated context specifying inputs, outputs, pipelines, and encoders.
-        
-    Returns:
-        A list of strings that can be passed directly to subprocess.run().
+    Generates the core FFmpeg filtergraph string from the context.
     """
     # Determine the middle frame for the PIP thumbnail
     mid_frame = get_middle_frame_index(
@@ -81,8 +74,13 @@ def build_ffmpeg_command(ctx: DailiesContext) -> list[str]:
         split_node = ""
     
     # concat slate video map and main video map
-    complex_filter = f"{split_node}{slate_fg};{video_fg};[slate_out][video_out]concat=n=2:v=1:a=0[final_v]"
-    
+    return f"{split_node}{slate_fg};{video_fg};[slate_out][video_out]concat=n=2:v=1:a=0[final_v]"
+
+def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, filter_complex_str: str = None) -> list[str]:
+    """
+    Assembles the complete FFmpeg CLI command list.
+    Supports either an inline filter_complex_str or a path to a filter_complex_script.
+    """
     # Resolution order: config YAML → $FFMPEG_BIN env var → "ffmpeg" on $PATH
     ffmpeg_bin = ctx.globals_config.ffmpeg_bin or os.environ.get("FFMPEG_BIN", "ffmpeg")
     
@@ -101,13 +99,22 @@ def build_ffmpeg_command(ctx: DailiesContext) -> list[str]:
         "-i", ctx.input_settings.path,
     ])
     
-    if has_template and ctx.slate_config.template_image:
+    # Check if we have a template image (this is a bit of a leak from build_filter_complex)
+    # but we need it for the -i flags.
+    if ctx.slate_config.template_image and ctx.slate_config.template_image != "":
         cmd.extend([
             "-i", ctx.slate_config.template_image
         ])
         
+    if filter_script_path:
+        cmd.extend(["-/filter_complex", filter_script_path])
+    elif filter_complex_str:
+        cmd.extend(["-filter_complex", filter_complex_str])
+    else:
+        # Generate on the fly if not provided
+        cmd.extend(["-filter_complex", get_filter_complex(ctx)])
+        
     cmd.extend([
-        "-filter_complex", complex_filter,
         "-map", "[final_v]",
     ])
     
