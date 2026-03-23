@@ -34,7 +34,8 @@ def build_ocio_filter(ctx: DailiesContext) -> Optional[str]:
         return None
     ocio_params = []
     if ctx.ocio_settings.config_path:
-        ocio_params.append(f"config='{ctx.ocio_settings.config_path}'")
+        escaped_config = escape_path_for_filtergraph(ctx.ocio_settings.config_path)
+        ocio_params.append(f"config='{escaped_config}'")
     if ctx.ocio_settings.input_space:
         ocio_params.append(f"input='{ctx.ocio_settings.input_space}'")
     if ctx.ocio_settings.output_space:
@@ -49,6 +50,22 @@ def escape_drawtext(text: str) -> str:
     """Escapes special characters specifically for FFmpeg's drawtext filter text parameter."""
     text = str(text).replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:")
     return text
+
+def escape_path_for_filtergraph(path: str) -> str:
+    """
+    Escapes paths for use within FFmpeg filtergraphs.
+    Specifically, it escapes colons in Windows drive-letter paths (e.g., C:/ -> C\\:/).
+    """
+    if not path:
+        return path
+    
+    # Check for Windows-style drive letter (e.g., C:/ or D:\)
+    import re
+    if re.match(r'^[a-zA-Z]:[/\\]', path):
+        # Escape ONLY the first colon
+        return path.replace(":", "\\:", 1)
+    
+    return path
 
 def wrap_text_heuristic(text: str, max_width: int, font_size: float) -> str:
     """
@@ -84,7 +101,7 @@ def build_drawtext_filter(text: str, x: str, y: str, fontfile: str = None, fonts
         f"fontsize={fontsize}"
     ]
     if fontfile:
-        params.append(f"fontfile='{fontfile}'")
+        params.append(f"fontfile='{escape_path_for_filtergraph(fontfile)}'")
     if box:
         params.append("box=1")
         params.append(f"boxcolor={boxcolor}")
