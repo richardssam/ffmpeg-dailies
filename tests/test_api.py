@@ -244,8 +244,8 @@ def test_slate_font_alignment_and_wrapping():
     # Heuristic: ~52 chars. 11 chars per line. Should be at least 4 lines.
     assert drawtext_count >= 4
     
-    # Assert alignment expression for right align
-    assert "x=w-tw-10" in fg
+    # Assert alignment expression for right align within max_width
+    assert "x=(0+300-tw)" in fg
     
     # Assert centered fallback for other fields if we had them or by checking default logic
     # (Existing default was centered fallback)
@@ -253,3 +253,69 @@ def test_slate_font_alignment_and_wrapping():
     # Check that Y increments (500 + 50 * 1.2 = 560)
     assert "y=560" in fg
 
+
+def test_windows_path_escaping_in_filtergraph():
+    """
+    Validates that Windows drive-letter paths (e.g. C:/) are correctly escaped
+    to (C\\:/) within the FFmpeg filtergraph.
+    """
+    from ffmpeg_dailies.models import DailiesContext, GlobalsConfig, BurninConfig, SlateConfig, InputSettings, OutputSettings, OCIOSettings, SlateField
+    from ffmpeg_dailies.filtergraph import build_video_filtergraph, build_slate_filtergraph
+    
+    # 1. Test Video Burn-in Font Path
+    ctx_video = DailiesContext(
+        input_settings=InputSettings(path="test.mov", framerate="24", width=1920, height=1080, is_image_sequence=False),
+        output_settings=OutputSettings(path="out.mov", target_width=1280, target_height=720),
+        ocio_settings=OCIOSettings(),
+        slate_config=SlateConfig(fields={}),
+        burnin_config=BurninConfig(
+            layout={"top_left": "Test"},
+            fonts={"top_left": "C:/Windows/Fonts/arial.ttf"}
+        ),
+        metadata={},
+        globals_config=GlobalsConfig()
+    )
+    
+    fg_video = build_video_filtergraph(ctx_video)
+    # FFmpeg filtergraph level escape check: C\:/
+    assert "fontfile='C\\:/Windows/Fonts/arial.ttf'" in fg_video
+
+    # 2. Test OCIO Config Path
+    ctx_ocio = DailiesContext(
+        input_settings=InputSettings(path="test.mov", framerate="24", width=1920, height=1080, is_image_sequence=False),
+        output_settings=OutputSettings(path="out.mov", target_width=1280, target_height=720),
+        ocio_settings=OCIOSettings(enabled=True, config_path="Z:/ocio/config.ocio"),
+        slate_config=SlateConfig(fields={}),
+        burnin_config=BurninConfig(),
+        metadata={},
+        globals_config=GlobalsConfig()
+    )
+    fg_ocio = build_video_filtergraph(ctx_ocio)
+    assert "config='Z\\:/ocio/config.ocio'" in fg_ocio
+
+    # 3. Test Slate Field Font Path (via global fallback for win32 if we mock sys.platform, 
+    # but easier to just check the helper directly or provide via config)
+    ctx_slate = DailiesContext(
+        input_settings=InputSettings(path="test.mov", framerate="24", width=1920, height=1080, is_image_sequence=False),
+        output_settings=OutputSettings(path="out.mov", target_width=1280, target_height=720),
+        ocio_settings=OCIOSettings(),
+        slate_config=SlateConfig(
+            fields={"Title": SlateField(text="My Show", x=100, y=100)},
+            global_font_size=50
+        ),
+        burnin_config=BurninConfig(),
+        metadata={},
+        globals_config=GlobalsConfig(font={"darwin": "path", "win32": "D:/custom/font.ttf", "linux": "path"})
+    )
+    
+    # Force platform to win32 for the test context if needed, 
+    # but build_slate_filtergraph uses get_default_font(ctx) which looks at sys.platform.
+    # We can just check if it works if we explicitly provide the font or mock platform.
+    import sys
+    original_platform = sys.platform
+    try:
+        sys.platform = "win32"
+        fg_slate, _ = build_slate_filtergraph(ctx_slate)
+        assert "fontfile='D\\:/custom/font.ttf'" in fg_slate
+    finally:
+        sys.platform = original_platform
