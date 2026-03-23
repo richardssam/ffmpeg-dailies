@@ -4,7 +4,7 @@ globals:
   height: 1080
   output_codec: prores
   font_size: 30
-  ffmpeg_bin: /Users/sam/roots/ffmpeg-ocio-8.1/bin/ffmpeg
+  #ffmpeg_bin: C:\Users\Sam\Documents\ffmpeg\ffmpeg.exe
   font:
     darwin: /System/Library/Fonts/Helvetica.ttc
     linux: /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
@@ -187,12 +187,9 @@ burnins:
     top_left: '{File Name}'
     top_center: '{Show Title}'
     top_right: '{Date Delivered}'
-  fonts:
-    lower_left: /System/Library/Fonts/Helvetica.ttc
-    lower_center: /System/Library/Fonts/Helvetica.ttc
 ocio:
   enabled: true
-  config_path: /Users/sam/git/ffmpeg-ocio-test/sourcemedia/studio-config-v1.0.0_aces-v1.3_ocio-v2.1_ns.ocio
+  config_path: Y:/ffmpeg-ocio-test/sourcemedia/studio-config-v1.0.0_aces-v1.3_ocio-v2.1_ns.ocio
   input_space: ACEScg
   output_space: sRGB - Display
   view: ACES 1.0 - SDR Video
