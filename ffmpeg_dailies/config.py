@@ -2,7 +2,7 @@ import yaml
 import copy
 from typing import Dict, Any, Optional
 
-from .models import BurninConfig, SlateConfig, SlateField, OCIOSettings, GlobalsConfig, OutputCodecProfile, DynamicMetadataConfig, MetadataRule
+from .models import BurninConfig, SlateConfig, SlateField, OCIOSettings, GlobalsConfig, OutputCodecProfile, DynamicMetadataConfig, MetadataRule, TimecodeConfig
 
 def load_config(config_path: str) -> Dict[str, Any]:
     """
@@ -122,7 +122,18 @@ def parse_globals_config(config: Dict[str, Any]) -> GlobalsConfig:
         output_codec=glbs.get("output_codec"),
         font_size=glbs.get("font_size"),
         ffmpeg_bin=glbs.get("ffmpeg_bin"),
-        font=glbs.get("font")
+        font=glbs.get("font"),
+        reel_name=glbs.get("reel_name"),
+        timecode=parse_timecode_config(glbs.get("timecode", {})) if "timecode" in glbs else None
+    )
+
+def parse_timecode_config(cfg: Dict[str, Any]) -> TimecodeConfig:
+    """Parses the timecode configuration block."""
+    return TimecodeConfig(
+        source=cfg.get("source", "media"),
+        start=cfg.get("start", "auto"),
+        rate=cfg.get("rate"),
+        drop_frame=cfg.get("drop_frame", False)
     )
 
 def parse_dynamic_metadata_config(config: Dict[str, Any]) -> DynamicMetadataConfig:

@@ -6,7 +6,7 @@ import os
 from .config import load_config, parse_globals_config, parse_output_codecs, parse_ocio_settings, parse_slate_config, parse_burnin_config, parse_dynamic_metadata_config
 from .models import DailiesContext, InputSettings, OutputSettings
 from .execute import build_ffmpeg_command, run_ffmpeg
-from .utils import resolve_input, populate_implicit_metadata
+from .utils import resolve_input, populate_implicit_metadata, extract_source_metadata, get_start_timecode, resolve_reel_name
 
 def render(
     config_path: str,
@@ -20,6 +20,7 @@ def render(
     target_width: int = None,
     target_height: int = None,
     fit: bool = None,
+    timecode: str = None,
     dry_run: bool = False
 ) -> list[str]:
     """
@@ -103,6 +104,9 @@ def render(
         
     final_metadata = populate_implicit_metadata(final_metadata, input_media, dynamic_metadata_config)
     
+    from .utils import extract_source_metadata, get_start_timecode, resolve_reel_name
+    source_meta = extract_source_metadata(input_media)
+    
     ctx = DailiesContext(
         input_settings=input_settings,
         output_settings=output_settings,
@@ -114,6 +118,16 @@ def render(
         globals_config=globals_config,
         output_codecs=output_codecs
     )
+    
+    if timecode:
+        if not globals_config.timecode:
+            from .models import TimecodeConfig
+            globals_config.timecode = TimecodeConfig()
+        globals_config.timecode.start = timecode
+
+    # Resolve timecode and reel name using the context
+    ctx.resolved_timecode = get_start_timecode(ctx, source_meta)
+    ctx.resolved_reel = resolve_reel_name(ctx, source_meta)
     
     from .execute import get_filter_complex
     filter_complex = get_filter_complex(ctx)

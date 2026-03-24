@@ -30,6 +30,13 @@ The pipeline SHALL support `{Shot}` and `{Vendor Name}` metadata variables. Thes
 ### Requirement: Dynamic Date and Time Resolution
 The pipeline MUST inject the current local date and time into the `Date Delivered` metadata key if it is absent from the user-supplied `metadata` dictionary.
 
-#### Scenario: Date and Time injected at render time
-- **WHEN** the user renders and `Date Delivered` is not defined in the YAML metadata block
 - **THEN** the metadata dictionary is implicitly populated with the current local timestamp formatted as `YYYY-MM-DD HH:MM` (e.g., `2026-02-27 13:55`).
+
+### Requirement: Timecode and Reel Tokens
+
+The system SHALL support `{timecode}` and `{reel}` metadata tokens in slate and burn-in templates.
+
+#### Scenario: Resolving Reel Name
+
+- **WHEN** `globals.reel_name` is set to `"{File Name}_v01"`
+- **THEN** the `{reel}` token resolves to the filename with the `_v01` suffix, and it is injected into the FFmpeg command via `-metadata:s:v:0 reel_name=...`

@@ -1,5 +1,6 @@
 pyyaml
 fileseq
+opentimelineio
 fastapi
 uvicorn
 python-multipart

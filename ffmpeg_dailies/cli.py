@@ -16,6 +16,7 @@ def parse_args():
     parser.add_argument("--target-width", type=int, default=None, help="Target delivery width (default: from config or 1920)")
     parser.add_argument("--target-height", type=int, default=None, help="Target delivery height (default: from config or 1080)")
     parser.add_argument("--start-number", type=int, help="Start frame for image sequence")
+    parser.add_argument("--timecode", help="Starting timecode (HH:MM:SS:FF). Overrides config/source.")
     
     # Allow overriding metadata via CLI
     parser.add_argument("--meta-notes", help="Notes meta")
@@ -56,6 +57,7 @@ def main():
         input_height=args.input_height,
         target_width=args.target_width,
         target_height=args.target_height,
+        timecode=args.timecode,
         fit=args.fit,
         dry_run=args.dry_run
     )

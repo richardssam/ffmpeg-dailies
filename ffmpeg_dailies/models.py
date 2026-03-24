@@ -16,6 +16,16 @@ class GlobalsConfig:
     font_size: Optional[float] = None
     ffmpeg_bin: Optional[str] = None
     font: Optional[Dict[str, str]] = None
+    reel_name: Optional[str] = None
+    timecode: Optional['TimecodeConfig'] = None
+
+@dataclasses.dataclass
+class TimecodeConfig:
+    """Settings for timecode generation (source, start TC, rate, etc.)."""
+    source: str = "media"  # "media" or "frame"
+    start: str = "auto"    # "auto" or SMPTE TC "HH:MM:SS:FF"
+    rate: Optional[float] = None
+    drop_frame: bool = False
 
 @dataclasses.dataclass
 class OutputCodecProfile:
@@ -115,3 +125,5 @@ class DailiesContext:
     dynamic_metadata: DynamicMetadataConfig = dataclasses.field(default_factory=DynamicMetadataConfig)
     globals_config: GlobalsConfig = dataclasses.field(default_factory=GlobalsConfig)
     output_codecs: Dict[str, OutputCodecProfile] = dataclasses.field(default_factory=dict)
+    resolved_timecode: Optional[str] = None
+    resolved_reel: Optional[str] = None

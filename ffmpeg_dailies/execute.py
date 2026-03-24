@@ -1,8 +1,10 @@
 import os
+import subprocess
 import json
 import logging
 import re
 import fileseq
+import opentimelineio as otio
 from .models import DailiesContext
 from .filtergraph import build_slate_filtergraph, build_video_filtergraph
 
@@ -125,11 +127,39 @@ def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, fi
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p"
         ])
-        
     cmd.extend([
         "-r", ctx.input_settings.framerate,
-        ctx.output_settings.path
     ])
+
+    # Timecode and Editorial Metadata
+    if ctx.resolved_timecode:
+        start_tc = ctx.resolved_timecode
+        # If we have a slate, the file must start 1 frame earlier to ensure 
+        # the main content starts at the resolved timecode.
+        if ctx.slate_config.fields:
+            try:
+                rate = float(ctx.input_settings.framerate or 24)
+                if ctx.globals_config.timecode and ctx.globals_config.timecode.rate:
+                    rate = ctx.globals_config.timecode.rate
+                
+                rt = otio.opentime.from_timecode(start_tc, rate)
+                offset_rt = rt - otio.opentime.RationalTime(1, rate)
+                
+                # Handle midnight rollover (24-hour wrap)
+                if offset_rt.value < 0:
+                    # add 24 hours (86400 seconds)
+                    offset_rt = offset_rt + otio.opentime.RationalTime(24 * 3600 * rate, rate)
+                    
+                start_tc = offset_rt.to_timecode()
+            except Exception as e:
+                logger.warning(f"Could not calculate slate timecode offset: {e}")
+        
+        cmd.extend(["-timecode", start_tc])
+
+    if ctx.resolved_reel:
+        cmd.extend(["-metadata:s:v:0", f"reel_name={ctx.resolved_reel}"])
+
+    cmd.append(ctx.output_settings.path)
     
     return cmd
 

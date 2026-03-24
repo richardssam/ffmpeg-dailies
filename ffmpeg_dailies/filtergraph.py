@@ -124,7 +124,11 @@ def resolve_burnin_text(template: str, ctx: DailiesContext) -> str:
     eval_dict = SafeDict(ctx.metadata)
     eval_dict["frame"] = "%{n}"
     
-    return template.format_map(eval_dict) if "{" in template else template
+    if hasattr(ctx, 'resolved_timecode') and ctx.resolved_timecode:
+        eval_dict["timecode"] = ctx.resolved_timecode
+    if hasattr(ctx, 'resolved_reel') and ctx.resolved_reel:
+        eval_dict["reel"] = ctx.resolved_reel
+        
     return template.format_map(eval_dict) if "{" in template else template
 
 def get_burnin_position(position: str) -> Tuple[str, str]:

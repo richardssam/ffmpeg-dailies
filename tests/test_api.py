@@ -76,10 +76,12 @@ def test_render_visual_regression(tmp_path):
     
     test_media = os.environ.get("FFMPEG_DAILIES_TEST_MEDIA")
     if not test_media:
-        pytest.skip("Set FFMPEG_DAILIES_TEST_MEDIA env var to run visual regression test")
-    
-    if not os.path.exists(golden_frame_path):
-        pytest.skip("golden_frame.png is missing. Please generate it first.")
+        # Fallback to local procedural test media if it exists
+        local_test_media = os.path.join(os.path.dirname(__file__), "data", "test_seq.%04d.exr")
+        if os.path.exists(os.path.dirname(local_test_media)):
+            test_media = local_test_media
+        else:
+            pytest.skip("Set FFMPEG_DAILIES_TEST_MEDIA env var or run tools/generate_test_media.py to run visual regression test")
         
     out_png = os.path.join(tmp_path, "test_render.png")
     
@@ -319,3 +321,150 @@ def test_windows_path_escaping_in_filtergraph():
         assert "fontfile='D\\:/custom/font.ttf'" in fg_slate
     finally:
         sys.platform = original_platform
+
+def test_otio_timecode_calculation():
+    """
+    Validates that opentimelineio is used correctly for frame-to-TC conversion.
+    """
+    from ffmpeg_dailies.models import DailiesContext, GlobalsConfig, TimecodeConfig, InputSettings, OutputSettings, OCIOSettings, SlateConfig, BurninConfig
+    from ffmpeg_dailies.utils import get_start_timecode
+    
+    # 24 fps, frame 1001 -> 00:00:41:17
+    ctx = DailiesContext(
+        input_settings=InputSettings(path="test.mov", framerate="24", start_number=1001, is_image_sequence=True, width=1920, height=1080),
+        output_settings=OutputSettings(path="out.mov", target_width=1280, target_height=720),
+        ocio_settings=OCIOSettings(),
+        slate_config=SlateConfig(fields={}),
+        burnin_config=BurninConfig(),
+        metadata={},
+        globals_config=GlobalsConfig(timecode=TimecodeConfig(source="frame"))
+    )
+    tc = get_start_timecode(ctx, {})
+    assert tc == "00:00:41:17"
+    
+    # 25 fps, frame 1001 -> 00:00:40:01
+    ctx.input_settings.framerate = "25"
+    tc = get_start_timecode(ctx, {})
+    assert tc == "00:00:40:01"
+
+def test_render_injects_timecode_metadata():
+    """
+    Validates that the render function injects bitstream metadata into the FFmpeg command.
+    """
+    config_path = os.path.join(os.path.dirname(__file__), "..", "sample_config.yaml")
+    
+    # Mock source meta to simulate a movie file with existing TC
+    # Actually, we can just use manual override which is easier to test
+    cmd = render(
+        config_path=config_path,
+        input_media="test.mov",
+        output_media="out.mov",
+        timecode="01:00:00:00",
+        dry_run=True,
+        target_width=1920,
+        target_height=1080
+    )
+    cmd_str = " ".join(cmd)
+    
+    # Check for -timecode
+    # Note: If no slate, it should be 01:00:00:00.
+    # But sample_config.yaml has a slate ("fields" are present).
+    # So it should be 00:59:59:23 (at 24fps).
+    assert "-timecode 00:59:59:23" in cmd_str
+    
+    # Check for reel metadata
+    # Default reel fallback is filename if not in source
+    assert "-metadata:s:v:0 reel_name=test.mov" in cmd_str
+
+def test_burnin_tokens_resolve_timecode_reel():
+    """
+    Validates that {timecode} and {reel} tokens resolve in burn-ins.
+    """
+    from ffmpeg_dailies.models import DailiesContext, GlobalsConfig, TimecodeConfig, InputSettings, OutputSettings, BurninConfig, OCIOSettings, SlateConfig
+    from ffmpeg_dailies.filtergraph import resolve_burnin_text
+    
+    ctx = DailiesContext(
+        input_settings=InputSettings(path="test.mov", framerate="24", start_number=1001, is_image_sequence=False, width=1920, height=1080),
+        output_settings=OutputSettings(path="out.mov", target_width=1280, target_height=720),
+        ocio_settings=OCIOSettings(),
+        slate_config=SlateConfig(fields={}),
+        burnin_config=BurninConfig(),
+        metadata={"File Name": "MY_SHOT_V01"},
+        globals_config=GlobalsConfig(timecode=TimecodeConfig(source="media"))
+    )
+    ctx.resolved_timecode = "01:00:00:00"
+    ctx.resolved_reel = "REEL_A001"
+    
+    resolved = resolve_burnin_text("TC: {timecode} REEL: {reel}", ctx)
+    assert resolved == "TC: 01:00:00:00 REEL: REEL_A001"
+
+def test_sourcing_from_exr_1001():
+    """
+    Validates that an EXR sequence starting at 1001 resolves the correct TC.
+    """
+    config_path = os.path.join(os.path.dirname(__file__), "..", "sample_config.yaml")
+    exr_path = os.path.join(os.path.dirname(__file__), "data", "exr_1001", "test_seq.%04d.exr")
+    
+    if not os.path.exists(os.path.dirname(exr_path)):
+        pytest.skip("Test media not found. Run tools/generate_test_media.py")
+
+    cmd = render(
+        config_path=config_path,
+        input_media=exr_path,
+        output_media="out.mov",
+        start_number=1001,
+        dry_run=True
+    )
+    cmd_str = " ".join(cmd)
+    
+    # TC for 1001 @ 24fps is 00:00:41:17.
+    # Slate offset -1 frame -> 00:00:41:16.
+    assert "-timecode 00:00:41:16" in cmd_str
+
+def test_sourcing_from_clean_mov():
+    """
+    Validates that a MOV without TC/Reel defaults correctly.
+    """
+    config_path = os.path.join(os.path.dirname(__file__), "..", "sample_config.yaml")
+    mov_path = os.path.join(os.path.dirname(__file__), "data", "test_clean.mov")
+    
+    if not os.path.exists(mov_path):
+        pytest.skip("Test media not found. Run tools/generate_test_media.py")
+
+    cmd = render(
+        config_path=config_path,
+        input_media=mov_path,
+        output_media="out.mov",
+        dry_run=True
+    )
+    cmd_str = " ".join(cmd)
+    
+    # Defaults to frame 0 -> 00:00:00:00.
+    # Slate offset -1 frame -> 23:59:59:23.
+    assert "-timecode 23:59:59:23" in cmd_str
+    # Reel defaults to filename
+    assert "reel_name=test_clean.mov" in cmd_str
+
+def test_sourcing_from_metadata_mov():
+    """
+    Validates that a MOV with existing TC/Reel preserves them.
+    """
+    config_path = os.path.join(os.path.dirname(__file__), "..", "sample_config.yaml")
+    mov_path = os.path.join(os.path.dirname(__file__), "data", "test_metadata.mov")
+    
+    if not os.path.exists(mov_path):
+        pytest.skip("Test media not found. Run tools/generate_test_media.py")
+
+    cmd = render(
+        config_path=config_path,
+        input_media=mov_path,
+        output_media="out.mov",
+        dry_run=True
+    )
+    cmd_str = " ".join(cmd)
+    
+    # Metadata has 09:00:00:00.
+    # Slate offset -1 frame -> 08:59:59:23.
+    assert "-timecode 08:59:59:23" in cmd_str
+    # Reel is PRO_REEL_001
+    assert "reel_name=PRO_REEL_001" in cmd_str

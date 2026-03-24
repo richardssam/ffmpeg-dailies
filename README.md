@@ -247,12 +247,14 @@ The `metadata` dict keys map directly to `{Token}` placeholders in the config. I
 
 ```bash
 # Unit tests (no FFmpeg required)
-PYTHONPATH=$PWD pytest tests/test_api.py
+PYTHONPATH=$PWD .venv/bin/python -m pytest tests/test_api.py
 
 # Visual regression test (requires FFmpeg + test media)
-FFMPEG_DAILIES_TEST_MEDIA="/path/to/SPARKS_ACES_%05d.exr" \
-FFMPEG_BIN=/path/to/ffmpeg \
-PYTHONPATH=$PWD pytest tests/test_api.py
+# 1. Generate synthetic test media first:
+.venv/bin/python tools/generate_test_media.py
+
+# 2. Run tests (picks up local media automatically):
+FFMPEG_BIN=/path/to/ffmpeg PYTHONPATH=$PWD .venv/bin/python -m pytest tests/test_api.py
 ```
 
 The visual regression test renders a single PNG frame and compares it pixel-by-pixel against a checked-in golden reference image (`tests/golden_frame.png`).
