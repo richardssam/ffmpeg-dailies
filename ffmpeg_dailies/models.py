@@ -21,6 +21,8 @@ class GlobalsConfig:
     reel_name: Optional[str] = None
     timecode: Optional['TimecodeConfig'] = None
     metadata_mapping: Optional[Dict[str, str]] = None
+    vf: Optional[List[str]] = None
+    extra_args: Optional[List[str]] = None
 
 @dataclasses.dataclass
 class TimecodeConfig:
@@ -119,6 +121,7 @@ class SlateConfig:
     thumbnail_y: Optional[int] = None
     thumbnail_width: Optional[int] = None
     global_font_size: Optional[float] = None
+    enabled: bool = True
 
 @dataclasses.dataclass
 class DailiesContext:

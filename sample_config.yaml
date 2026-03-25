@@ -19,6 +19,8 @@ globals:
     display_type: display_type
     watermarking: watermarking
     source_filename: source_filename
+  vf: "scale=in_color_matrix=bt709:out_color_matrix=bt709"
+  args: ["-color_primaries", "bt709", "-color_trc", "iec61966-2-1", "-colorspace", "bt709"]
 output_codecs:
   h264_hq:
     codec: libx264

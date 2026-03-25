@@ -217,6 +217,10 @@ def build_slate_filtergraph(ctx: DailiesContext, mid_frame: int = 1) -> Tuple[st
         ocio_filter = build_ocio_filter(ctx)
         if ocio_filter:
             pip_chain += "," + ocio_filter
+            
+        # Apply global vf filters to PIP
+        if ctx.globals_config.vf:
+            pip_chain += "," + ",".join(ctx.globals_config.vf)
                 
         pip_chain += f",trim=end_frame=1,setpts=PTS-STARTPTS[pip]"
         
@@ -228,6 +232,11 @@ def build_slate_filtergraph(ctx: DailiesContext, mid_frame: int = 1) -> Tuple[st
         pip_y = ctx.slate_config.thumbnail_y if ctx.slate_config.thumbnail_y is not None else 50
         filters.append(f"{current_out}[pip]overlay=x={pip_x}:y={pip_y}[slate_with_pip]")
         current_out = "[slate_with_pip]"
+
+    # Apply global vf filters to the slate background/template as well
+    if ctx.globals_config.vf:
+        filters.append(f"{current_out}{','.join(ctx.globals_config.vf)}[slate_vf]")
+        current_out = "[slate_vf]"
 
     # Apply Text Setup
     drawtexts = []
@@ -481,6 +490,10 @@ def build_video_filtergraph(ctx: DailiesContext, input_stream: str = "[0:v]") ->
         
     if drawtexts:
         filters.append(",".join(drawtexts))
+        
+    # Apply global vf filters if specified
+    if ctx.globals_config.vf:
+        filters.extend(ctx.globals_config.vf)
         
     # Combine linearly
     # e.g. [input_stream]scale_pad[v1];[v1]ocio[v2];[v2]drawtext1,drawtext2...[video_out]

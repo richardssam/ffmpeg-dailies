@@ -131,8 +131,17 @@ def parse_globals_config(config: Dict[str, Any]) -> GlobalsConfig:
         font_color=glbs.get("font_color", "white"),
         background_color=glbs.get("background_color", "black@0.5"),
         timecode=parse_timecode_config(glbs.get("timecode", {})) if "timecode" in glbs else None,
-        metadata_mapping=glbs.get("metadata_mapping")
+        metadata_mapping=glbs.get("metadata_mapping"),
+        vf=_to_list(glbs.get("vf")),
+        extra_args=_to_list(glbs.get("extra_args") or glbs.get("args"))
     )
+
+def _to_list(val):
+    if val is None:
+        return None
+    if isinstance(val, str):
+        return [val]
+    return list(val)
 
 def parse_timecode_config(cfg: Dict[str, Any]) -> TimecodeConfig:
     """Parses the timecode configuration block."""

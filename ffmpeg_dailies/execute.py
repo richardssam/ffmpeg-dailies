@@ -188,6 +188,10 @@ def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, fi
     if ext in (".mov", ".mp4"):
         cmd.extend(["-movflags", "use_metadata_tags"])
 
+    # 4. Append extra arbitrary args from globals
+    if ctx.globals_config.extra_args:
+        cmd.extend(ctx.globals_config.extra_args)
+
     cmd.append(ctx.output_settings.path)
     
     return cmd
