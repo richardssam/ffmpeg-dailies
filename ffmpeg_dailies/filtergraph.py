@@ -89,17 +89,24 @@ def wrap_text_heuristic(text: str, max_width: int, font_size: float) -> str:
         
     return "\n".join(lines)
 
-def build_drawtext_filter(text: str, x: str, y: str, fontfile: str = None, fontsize: int = 48, fontcolor: str = "white", box: bool = False, boxcolor: str = "black@0.5", boxborderw: int = 5, start_number: Optional[int] = None) -> str:
+def build_drawtext_filter(text: str = None, x: str = "0", y: str = "0", fontfile: str = None, fontsize: int = 48, fontcolor: str = "white", box: bool = False, boxcolor: str = "black@0.5", boxborderw: int = 5, start_number: Optional[int] = None, timecode: Optional[str] = None, tc_rate: Optional[float] = None) -> str:
     """
     Constructs an extensive FFmpeg drawtext filter string with specified positioning and text features.
     """
     params = [
-        f"text='{escape_drawtext(text)}'",
         f"x={x}",
         f"y={y}",
         f"fontcolor={fontcolor}",
         f"fontsize={fontsize}"
     ]
+    
+    if text:
+        params.insert(0, f"text='{escape_drawtext(text)}'")
+        
+    if timecode and tc_rate:
+        params.insert(0, f"rate={tc_rate}")
+        params.insert(0, f"timecode='{escape_drawtext(timecode)}'")
+        
     if fontfile:
         params.append(f"fontfile='{escape_path_for_filtergraph(fontfile)}'")
     if box:
@@ -119,10 +126,10 @@ def resolve_burnin_text(template: str, ctx: DailiesContext) -> str:
         def __missing__(self, key):
             return '{' + key + '}'
             
-    # Always include 'frame' as FFmpeg's active render variable %{n} or %{frame_num}
-    # For actual FFmpeg drawtext we must pass literal %{n} so drawtext updates per frame.
+    # Always include 'frame' as FFmpeg's active render variable %{frame_num}
+    # For actual FFmpeg drawtext we must pass literal %{frame_num} so drawtext updates per frame.
     eval_dict = SafeDict(ctx.metadata)
-    eval_dict["frame"] = "%{n}"
+    eval_dict["frame"] = "%{frame_num}"
     
     if hasattr(ctx, 'resolved_timecode') and ctx.resolved_timecode:
         eval_dict["timecode"] = ctx.resolved_timecode
@@ -235,6 +242,11 @@ def build_slate_filtergraph(ctx: DailiesContext, mid_frame: int = 1) -> Tuple[st
             return '{' + key + '}'
             
     safe_metadata = SafeDict(ctx.metadata)
+    
+    if getattr(ctx, 'resolved_timecode', None):
+        safe_metadata["timecode"] = ctx.resolved_timecode
+    if getattr(ctx, 'resolved_reel', None):
+        safe_metadata["reel"] = ctx.resolved_reel
     
     for key, field in ctx.slate_config.fields.items():
         text_template = field.text
@@ -350,25 +362,122 @@ def build_video_filtergraph(ctx: DailiesContext, input_stream: str = "[0:v]") ->
             
     # 3. Burn-ins
     drawtexts = []
-    for pos, template in ctx.burnin_config.layout.items():
-        text = resolve_burnin_text(template, ctx)
-        x, y = get_burnin_position(pos)
+    
+    # Calculate tc_rate from framerate (e.g. 24000/1001 or 24)
+    tc_rate_str = str(ctx.input_settings.framerate or "24")
+    if "/" in tc_rate_str:
+        num, den = tc_rate_str.split("/")
+        tc_rate = float(num) / float(den) if float(den) != 0 else 24.0
+    else:
+        tc_rate = float(tc_rate_str)
         
+    for pos, template in ctx.burnin_config.layout.items():
         # apply font config if available based on pos, or use default
         font_file = ctx.burnin_config.fonts.get(pos, get_default_font(ctx))
-        
         # Cascading font size: burnin global -> globals -> fallback 40
         font_size = ctx.burnin_config.global_font_size or ctx.globals_config.font_size or 40
+        # Cascading colors: burnin -> global -> defaults
+        font_color = ctx.burnin_config.font_color or ctx.globals_config.font_color or "white"
+        bg_color = ctx.burnin_config.background_color or ctx.globals_config.background_color or "black@0.5"
+        
+        base_x, base_y = get_burnin_position(pos)
 
-        drawtexts.append(build_drawtext_filter(
-            text=text,
-            x=x,
-            y=y,
-            fontfile=font_file,
-            fontsize=int(font_size),
-            box=True, # added background box for readability against video
-            start_number=ctx.input_settings.start_number
-        ))
+        # Detect rolling timecode token
+        if "{timecode}" in template and getattr(ctx, 'resolved_timecode', None):
+            parts = template.split("{timecode}")
+            prefix_template = parts[0]
+            suffix_template = parts[1] if len(parts) > 1 else ""
+            
+            # Use %{frame_num} for better expansion reliability
+            resolved_prefix = resolve_burnin_text(prefix_template, ctx)
+            resolved_suffix = resolve_burnin_text(suffix_template, ctx)
+            
+            # Heuristics for widths
+            char_w = font_size * 0.55
+            # Assume frame counter is 4 digits if using %{n} or %{frame_num}
+            w_prefix = len(resolved_prefix.replace("%{n}", "0000").replace("%{frame_num}", "0000")) * char_w
+            w_tc = 11 * char_w
+            w_suffix = len(resolved_suffix.replace("%{n}", "0000").replace("%{frame_num}", "0000")) * char_w
+            total_w = w_prefix + w_tc + w_suffix
+            
+            target_w = ctx.output_settings.target_width
+            
+            # Determine starting X based on logical position
+            if "right" in pos:
+                base_x_num = target_w - total_w - 10
+            elif "center" in pos:
+                base_x_num = (target_w - total_w) / 2
+            else:
+                base_x_num = 10
+                
+            # 1. Render Unified Background Box
+            # To ensure the box is visible and covers the full height of the font, 
+            # we use a string of capital 'M' characters with transparent font color.
+            # 'M' is typically the tallest and widest character.
+            bg_char_count = int(total_w / (font_size * 0.5)) + 1
+            drawtexts.append(build_drawtext_filter(
+                text="M" * bg_char_count,
+                x=int(base_x_num),
+                y=base_y,
+                fontfile=font_file,
+                fontsize=int(font_size),
+                fontcolor="white@0.0", # Transparent text
+                box=True,
+                boxcolor=bg_color
+            ))
+
+            # 2. Render Prefix
+            if resolved_prefix:
+                drawtexts.append(build_drawtext_filter(
+                    text=resolved_prefix,
+                    x=int(base_x_num),
+                    y=base_y,
+                    fontfile=font_file,
+                    fontsize=int(font_size),
+                    fontcolor=font_color,
+                    box=False,
+                    start_number=ctx.input_settings.start_number
+                ))
+
+            # 3. Render Rolling Timecode
+            drawtexts.append(build_drawtext_filter(
+                text=None,
+                x=int(base_x_num + w_prefix),
+                y=base_y,
+                fontfile=font_file,
+                fontsize=int(font_size),
+                fontcolor=font_color,
+                box=False,
+                timecode=ctx.resolved_timecode,
+                tc_rate=tc_rate,
+                start_number=ctx.input_settings.start_number
+            ))
+
+            # 4. Render Suffix
+            if resolved_suffix:
+                drawtexts.append(build_drawtext_filter(
+                    text=resolved_suffix,
+                    x=int(base_x_num + w_prefix + w_tc),
+                    y=base_y,
+                    fontfile=font_file,
+                    fontsize=int(font_size),
+                    fontcolor=font_color,
+                    box=False,
+                    start_number=ctx.input_settings.start_number
+                ))
+        else:
+            text = resolve_burnin_text(template, ctx)
+            drawtexts.append(build_drawtext_filter(
+                text=text,
+                x=base_x,
+                y=base_y,
+                fontfile=font_file,
+                fontsize=int(font_size),
+                fontcolor=font_color,
+                box=True,
+                boxcolor=bg_color,
+                start_number=ctx.input_settings.start_number
+            ))
         
     if drawtexts:
         filters.append(",".join(drawtexts))

@@ -468,3 +468,102 @@ def test_sourcing_from_metadata_mov():
     assert "-timecode 08:59:59:23" in cmd_str
     # Reel is PRO_REEL_001
     assert "reel_name=PRO_REEL_001" in cmd_str
+
+def test_burnin_rolling_timecode_conversion():
+    """
+    Validates that {timecode} in a burn-in template is converted 
+    to a native FFmpeg rolling timecode parameter.
+    """
+    from ffmpeg_dailies.models import DailiesContext, BurninConfig, InputSettings, OutputSettings, OCIOSettings, SlateConfig, GlobalsConfig
+    from ffmpeg_dailies.filtergraph import build_video_filtergraph
+    
+    ctx = DailiesContext(
+        input_settings=InputSettings(path="test.mov", framerate="24", width=1920, height=1080, is_image_sequence=False),
+        output_settings=OutputSettings(path="out.mov", target_width=1280, target_height=720),
+        ocio_settings=OCIOSettings(),
+        slate_config=SlateConfig(fields={}),
+        burnin_config=BurninConfig(layout={"lower_right": "TC: {timecode}"}),
+        metadata={},
+        globals_config=GlobalsConfig(font_size=40)
+    )
+    ctx.resolved_timecode = "01:00:00:00"
+    
+    fg = build_video_filtergraph(ctx)
+    
+    # Check that drawtext has timecode and rate.
+    assert "timecode='01\\:00\\:00\\:00'" in fg
+    assert "rate=24.0" in fg
+    # The text prefix "TC: " should still be there but {timecode} removed
+    assert "text='TC\\: '" in fg
+    assert "{timecode}" not in fg
+
+
+def test_slate_includes_timecode_reel():
+    """
+    Validates that {timecode} and {reel} can be used in slate fields.
+    """
+    from ffmpeg_dailies.models import DailiesContext, SlateConfig, SlateField, InputSettings, OutputSettings, OCIOSettings, BurninConfig, GlobalsConfig
+    from ffmpeg_dailies.filtergraph import build_slate_filtergraph
+    
+    ctx = DailiesContext(
+        input_settings=InputSettings(path="test.mov", framerate="24", width=1920, height=1080, is_image_sequence=False),
+        output_settings=OutputSettings(path="out.mov", target_width=1280, target_height=720),
+        ocio_settings=OCIOSettings(),
+        slate_config=SlateConfig(fields={
+            "TC": SlateField(text="{timecode}", x=100, y=100),
+            "Reel": SlateField(text="{reel}", x=100, y=200)
+        }),
+        burnin_config=BurninConfig(),
+        metadata={},
+        globals_config=GlobalsConfig(font_size=40)
+    )
+    ctx.resolved_timecode = "01:00:00:00"
+    ctx.resolved_reel = "REEL_XYZ"
+    
+    fg, _ = build_slate_filtergraph(ctx)
+    # Slate fields without a template image get "Key: " prefix
+    assert "text='TC\\: 01\\:00\\:00\\:00'" in fg
+    assert "text='Reel\\: REEL_XYZ'" in fg
+
+def test_burnin_combined_tokens():
+    """
+    Validates that {timecode} followed by another token (like {frame})
+    results in separate drawtext filters with absolute numeric coordinates.
+    """
+    from ffmpeg_dailies.models import DailiesContext, BurninConfig, InputSettings, OutputSettings, OCIOSettings, SlateConfig, GlobalsConfig
+    from ffmpeg_dailies.filtergraph import build_video_filtergraph
+    
+    ctx = DailiesContext(
+        input_settings=InputSettings(path="test.mov", framerate="24", width=1920, height=1080, is_image_sequence=False),
+        output_settings=OutputSettings(path="out.mov", target_width=1280, target_height=720),
+        ocio_settings=OCIOSettings(),
+        slate_config=SlateConfig(fields={}),
+        burnin_config=BurninConfig(layout={"lower_right": "{timecode} [{frame}]"}),
+        metadata={},
+        globals_config=GlobalsConfig(font_size=40)
+    )
+    ctx.resolved_timecode = "01:00:00:00"
+    
+    fg = build_video_filtergraph(ctx, "[0:v]")
+    
+    # Heuristic check:
+    # font_size 40, char_w 22.
+    # w_prefix = 0
+    # w_tc = 11 * 22 = 242
+    # w_suffix = len(" [0000]") * 22 = 7 * 22 = 154
+    # total_w = 396
+    # base_x = 1280 - 396 - 10 = 874
+    
+    # 1. Background Box (string of spaces)
+    # 396 / 22 = 18 spaces
+    expected_bg = "drawtext=text='                  ':x=874"
+    assert expected_bg in fg
+    
+    # 2. Timecode (at base_x + w_prefix)
+    assert "drawtext=timecode='01\\:00\\:00\\:00':rate=24.0:x=874" in fg
+    
+    # 3. Suffix (at base_x + w_prefix + w_tc)
+    # x = 874 + 0 + 242 = 1116
+    assert "text='\\ [%{frame_num}]':x=1116" in fg or "text=' [%{frame_num}]':x=1116" in fg
+
+

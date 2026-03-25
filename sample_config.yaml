@@ -4,7 +4,6 @@ globals:
   height: 1080
   output_codec: prores
   font_size: 30
-  #ffmpeg_bin: /Users/sam/roots/ffmpeg-ocio-8.1/bin/ffmpeg
   font:
     darwin: /System/Library/Fonts/Helvetica.ttc
     linux: /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
@@ -32,10 +31,10 @@ dynamic_metadata:
   rules:
   - target: Shot
     source: File Name
-    regex: ^([A-Z0-9]+_[0-9]+)
+    regex: ^([A-Z0-9]+)
   - target: Version
     source: File Name
-    regex: _(v\d+)
+    regex: (v\d+)
 slate:
   template_image: base_slate.exr
   thumbnail_enabled: true
@@ -104,20 +103,36 @@ slate:
       align: left
       max_width: 0
       max_height: 0
+    Timecode:
+      text: 'TC: {timecode}'
+      x: 140
+      y: 400
+      font_size: 40
+      align: left
+      max_width: 0
+      max_height: 0
+    Reel:
+      text: 'Reel: {reel}'
+      x: 140
+      y: 450
+      font_size: 30
+      align: left
+      max_width: 0
+      max_height: 0
   thumbnail_x: 1028
   thumbnail_y: 83
-  thumbnail_width: 826
+  thumbnail_width: 828
 burnins:
+  font_size: 40
+  font_color: white
+  background_color: black@0.5
   layout:
     lower_left: '{Notes}'
     lower_center: '{Vendor Name}'
-    lower_right: '{frame}'
+    lower_right: '{timecode} {frame}'
     top_left: '{File Name}'
     top_center: '{Show Title}'
     top_right: '{Date Delivered}'
-  #fonts:
-  #  lower_left: /System/Library/Fonts/Helvetica.ttc
-  #  lower_center: /System/Library/Fonts/Helvetica.ttc
 ocio:
   enabled: true
   config_path: ../ffmpeg-ocio-test/sourcemedia/studio-config-v1.0.0_aces-v1.3_ocio-v2.1_ns.ocio

@@ -22,9 +22,10 @@ def get_middle_frame_index(input_path: str, is_sequence: bool = False, start_num
             if seq_list:
                 frames = list(seq_list[0].frameSet())
                 if frames:
-                    return frames[len(frames) // 2]
+                    # Return the 0-indexed offset for use with FFmpeg's 'n' variable
+                    return len(frames) // 2
                 
-            return 1
+            return 0
             
         count = get_video_frame_count(input_path)
         return max(1, count // 2)

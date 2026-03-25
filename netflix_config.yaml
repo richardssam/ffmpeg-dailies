@@ -189,7 +189,7 @@ burnins:
     top_right: '{Date Delivered}'
 ocio:
   enabled: true
-  config_path: Y:/ffmpeg-ocio-test/sourcemedia/studio-config-v1.0.0_aces-v1.3_ocio-v2.1_ns.ocio
+  config_path: ../ffmpeg-ocio-test/sourcemedia/studio-config-v1.0.0_aces-v1.3_ocio-v2.1_ns.ocio
   input_space: ACEScg
   output_space: sRGB - Display
   view: ACES 1.0 - SDR Video

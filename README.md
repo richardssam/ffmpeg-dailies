@@ -158,7 +158,27 @@ metadata:
   "Notes": "Sample Note"
   "Vendor Name": "Test Vendor"
   "Show Title": "Sample Show"
-  "Date Delivered": "2026-02-26"
+  "Date Delivered": "2026-02-26 14:05"
+
+### Metadata & Tokens
+
+The engine uses `{Token}` placeholders to inject values into Slates and Burn-ins. 
+
+#### **Dynamic Metadata**
+Any key present in the top-level `metadata` block (or passed via CLI `--meta-*` / Python API) can be used as a token. For example, if you add `Client: "Netflix"` to your metadata, you can use `{Client}` in your layout.
+
+#### **Automatic Fields**
+The following fields are automatically populated if missing from your explicit metadata:
+- `{File Name}`: The basename of the input media.
+- `{Date Delivered}`: Current timestamp as `YYYY-MM-DD HH:MM`.
+- `{Version}`: Parsed from the filename (e.g. `_v01`).
+- `{Frame Range}`: Total frames (from ffprobe or directory listing).
+
+#### **Special Fields**
+These fields are handled specifically by the rendering engine:
+- `{frame}`: A live frame counter that updates every frame (resolves to FFmpeg's `%{n}`). 
+- `{timecode}`: A **rolling timecode** display that updates per frame. In burn-ins, this uses FFmpeg's native `drawtext=timecode` for maximum precision. When used on a static slate, it shows the starting timecode of the file.
+- `{reel}`: The resolved reel name extracted from the source media bitstream or overridden via config.
 ```
 
 ### `slate`
