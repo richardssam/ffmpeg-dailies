@@ -2,6 +2,8 @@
 
 A Python toolkit for generating VFX dailies with slate overlays, burn-ins, and OCIO colour management — all driven by a single YAML configuration file and powered by FFmpeg.
 
+FFmpeg 8.1 now includes OCIO support, this allows the media conversion to be done in a single pass, including the slate and burn-in overlays. This is much faster than using Nuke or other tools for dailies generation. This is intended as a proof of concept.
+
 | Example slate | Example burn-ins |
 | :---: | :---: |
 | <img src="docs/netflix_sparks_slate.jpg" width="80%" alt="Example slate"> | <img src="docs/frame-burn-in.jpg" width="80%" alt="Example burn-ins"> |
@@ -26,7 +28,7 @@ Slate Layout GUI to help position the slate fields:
 ### Prerequisites
 
 - Python 3.10+
-- FFmpeg with `libx264` and OCIO support, see: [Building FFmpeg with OCIO using Conan](https://github.com/richardssam/EncodingGuidelines/blob/ffmpegocio/conan/README.md)
+- FFmpeg 8.1+ with `libx264` and OCIO support, see: [Building FFmpeg with OCIO using Conan](https://github.com/richardssam/EncodingGuidelines/blob/ffmpegocio/conan/README.md)
 
 ### Setup
 
