@@ -19,6 +19,10 @@ Slate Layout GUI to help position the slate fields:
 - **YAML-driven layout** — all visual elements, codecs, and metadata are defined in a single config file
 - **Python API** — call `ffmpeg_dailies.render()` directly from ShotGrid, Nuke, or any Python environment
 - **Dry-run mode** — get the FFmpeg command as a list of strings for farm submission without executing it
+- **Verbose logging** — use `--verbose` to see the full FFmpeg command and human-readable filter graphs
+- **Global pipeline control** — inject custom video filters (`vf`) and FFmpeg flags (`args`) globally
+- **Optional Slates** — toggle the preroll title card on/off via configuration
+- **Professional Metadata** — automated mapping of internal tokens to professional-grade FFmpeg metadata
 - **Cross-platform font support** — per-OS font paths in config (`darwin`, `linux`, `win32`)
 
 ## Quick Start
@@ -91,7 +95,7 @@ usage: run_dailies [-h] --config CONFIG --input INPUT --output OUTPUT
                    [--framerate FRAMERATE] [--input-width INPUT_WIDTH]
                    [--input-height INPUT_HEIGHT] [--target-width TARGET_WIDTH]
                    [--target-height TARGET_HEIGHT] [--start-number START_NUMBER]
-                   [--fit] [--dry-run]
+                   [--fit] [--dry-run] [--verbose] [--codec CODEC]
                    [--meta-notes META_NOTES] [--meta-vendor META_VENDOR]
                    [--meta-shot META_SHOT] [--meta-filename META_FILENAME]
                    [--meta-show META_SHOW] [--meta-date META_DATE]
@@ -105,6 +109,8 @@ usage: run_dailies [-h] --config CONFIG --input INPUT --output OUTPUT
 | `--framerate`, `-r` | Override input framerate (default: from config or `24`) |
 | `--fit` | Preserve aspect ratio by padding instead of stretching |
 | `--dry-run` | Print the FFmpeg command without executing it |
+| `--verbose`, `-v` | Show the FFmpeg command and readable, newline-formatted filter graph |
+| `--codec` | Override the output codec profile (e.g. `h264_hq`, `prores`) |
 | `--meta-shot` | **NEW**: Set the `{Shot}` metadata token |
 | `--meta-vendor` | Set the `{Vendor Name}` metadata token |
 | `--meta-*` | Override other metadata fields (notes, filename, show, date) |
@@ -125,6 +131,11 @@ globals:
   output_codec: h264_hq      # references a key in output_codecs
   font_size: 44               # default font size for slate/burn-in text
   ffmpeg_bin: null             # path to ffmpeg binary, or null to use $FFMPEG_BIN / $PATH
+  vf: "scale=bt709:bt709"      # Optional: Global video filter applied to all media
+  args: ["-color_trc", "bt709"] # Optional: Extra FFmpeg arguments appended at the end
+  metadata_mapping:            # Optional: Map internal tokens to FFmpeg metadata keys
+    "Show Title": "title"
+    "Shot": "shot"
   font:                        # per-platform font path
     darwin: /System/Library/Fonts/Helvetica.ttc
     linux: /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
@@ -187,6 +198,7 @@ Configures the title card shown before the video content.
 
 ```yaml
 slate:
+  enabled: true                      # Optional: Set to false to skip the slate
   template_image: "base_slate.exr"  # optional background plate
   thumbnail_enabled: true            # PIP preview from middle frame
   fields:
@@ -258,6 +270,8 @@ ffmpeg_dailies.render(
     target_height: int = None, # override output height
     fit: bool = None,          # pad to preserve aspect ratio
     dry_run: bool = False,     # return command without executing
+    verbose: bool = False,     # show command and filter graph details
+    output_codec: str = None   # override global output_codec
 ) -> list[str]                 # always returns the FFmpeg command list
 ```
 
