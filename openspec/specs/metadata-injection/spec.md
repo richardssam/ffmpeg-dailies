@@ -40,3 +40,36 @@ The system SHALL support `{timecode}` and `{reel}` metadata tokens in slate and 
 
 - **WHEN** `globals.reel_name` is set to `"{File Name}_v01"`
 - **THEN** the `{reel}` token resolves to the filename with the `_v01` suffix, and it is injected into the FFmpeg command via `-metadata:s:v:0 reel_name=...`
+
+### Requirement: Metadata Mapping Configuration
+The YAML configuration SHALL support a `metadata_mapping` block within the `globals` section. This block maps metadata token names (e.g., `Shot`) to FFmpeg-compatible metadata keys (e.g., `shot`).
+
+#### Scenario: Defining custom metadata mapping
+- **WHEN** the config contains:
+  ```yaml
+  globals:
+    metadata_mapping:
+      Shot: shot
+      Version: version
+  ```
+- **THEN** the pipeline translates these into FFmpeg `-metadata` arguments during render.
+
+### Requirement: Global Metadata Injection
+The pipeline SHALL support injecting metadata into the global container level using the `-metadata key=value` syntax. This is the default behavior for all keys unless specified otherwise.
+
+### Requirement: Stream-level Metadata Injection
+The pipeline SHALL support injecting metadata into the primary video stream (v:0) using the `-metadata:s:v:0 key=value` syntax. This MUST be used for the `reel_name` key by default.
+
+### Requirement: Default Metadata Mappings
+The pipeline SHALL provide a set of default mappings if `metadata_mapping` is not explicitly defined:
+- `Show Title` -> `title` (global)
+- `Notes` -> `comment` (global)
+- `Vendor Name` -> `artist` (global)
+- `Date Delivered` -> `date` (global)
+
+### Requirement: Automatic Production Metadata Resolution
+The pipeline SHALL automatically calculate and inject standard production metadata fields if they are missing from the input payload.
+- `first_frame`, `last_frame`, `source_frame_rate`, `display_type`, `watermarking`.
+
+### Requirement: MOV/MP4 Metadata Compatibility
+The pipeline SHALL include `-movflags use_metadata_tags` when the output format is QuickTime (MOV) or MP4.

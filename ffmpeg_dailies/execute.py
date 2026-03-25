@@ -132,33 +132,57 @@ def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, fi
         "-r", ctx.input_settings.framerate,
     ])
 
-    # Timecode and Editorial Metadata
+    # 1. Enrich metadata with production-trackable info
+    if "source_frame_rate" not in ctx.metadata:
+        ctx.metadata["source_frame_rate"] = str(ctx.input_settings.framerate)
+    
+    if "slate_length" not in ctx.metadata:
+        ctx.metadata["slate_length"] = "1" if ctx.slate_config.fields else "0"
+        
+    if "display_type" not in ctx.metadata and ctx.ocio_settings.enabled:
+        ctx.metadata["display_type"] = f"{ctx.ocio_settings.output_space or ctx.ocio_settings.display} ({ctx.ocio_settings.view})"
+        
+    if "watermarking" not in ctx.metadata:
+        ctx.metadata["watermarking"] = "True" if ctx.burnin_config.layout else "False"
+
+    # 2. Add metadata flags based on mappings
+    default_mappings = {
+        "Show Title": "title",
+        "Notes": "comment",
+        "Vendor Name": "artist",
+        "Date Delivered": "date",
+        "File Name": "original_filename",
+        "reel": "s:v:0:reel_name"
+    }
+    
+    # Ensure resolved_reel and resolved_timecode are available for mapping if not already there
+    if ctx.resolved_reel:
+        ctx.metadata["reel"] = ctx.resolved_reel
+        
+    mappings = default_mappings.copy()
+    if ctx.globals_config.metadata_mapping:
+        mappings.update(ctx.globals_config.metadata_mapping)
+        
+    for key, value in ctx.metadata.items():
+        # Skip special internal tokens that are handled differently
+        if key in ("timecode", "frame"):
+            continue
+            
+        target_key = mappings.get(key, key)
+        if target_key.startswith("s:v:0:"):
+            real_key = target_key[6:]
+            cmd.extend(["-metadata:s:v:0", f"{real_key}={value}"])
+        else:
+            cmd.extend(["-metadata", f"{target_key}={value}"])
+
+    # Timecode is still handled via the -timecode flag for better container support
     if ctx.resolved_timecode:
         start_tc = ctx.resolved_timecode
-        # If we have a slate, the file must start 1 frame earlier to ensure 
-        # the main content starts at the resolved timecode.
-        if ctx.slate_config.fields:
-            try:
-                rate = float(ctx.input_settings.framerate or 24)
-                if ctx.globals_config.timecode and ctx.globals_config.timecode.rate:
-                    rate = ctx.globals_config.timecode.rate
-                
-                rt = otio.opentime.from_timecode(start_tc, rate)
-                offset_rt = rt - otio.opentime.RationalTime(1, rate)
-                
-                # Handle midnight rollover (24-hour wrap)
-                if offset_rt.value < 0:
-                    # add 24 hours (86400 seconds)
-                    offset_rt = offset_rt + otio.opentime.RationalTime(24 * 3600 * rate, rate)
-                    
-                start_tc = offset_rt.to_timecode()
-            except Exception as e:
-                logger.warning(f"Could not calculate slate timecode offset: {e}")
-        
-        cmd.extend(["-timecode", start_tc])
 
-    if ctx.resolved_reel:
-        cmd.extend(["-metadata:s:v:0", f"reel_name={ctx.resolved_reel}"])
+    # 3. Format-specific compatibility flags
+    ext = os.path.splitext(ctx.output_settings.path)[1].lower()
+    if ext in (".mov", ".mp4"):
+        cmd.extend(["-movflags", "use_metadata_tags"])
 
     cmd.append(ctx.output_settings.path)
     

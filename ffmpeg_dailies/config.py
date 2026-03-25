@@ -129,7 +129,8 @@ def parse_globals_config(config: Dict[str, Any]) -> GlobalsConfig:
         reel_name=glbs.get("reel_name"),
         font_color=glbs.get("font_color", "white"),
         background_color=glbs.get("background_color", "black@0.5"),
-        timecode=parse_timecode_config(glbs.get("timecode", {})) if "timecode" in glbs else None
+        timecode=parse_timecode_config(glbs.get("timecode", {})) if "timecode" in glbs else None,
+        metadata_mapping=glbs.get("metadata_mapping")
     )
 
 def parse_timecode_config(cfg: Dict[str, Any]) -> TimecodeConfig:

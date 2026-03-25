@@ -20,6 +20,7 @@ class GlobalsConfig:
     font: Optional[Dict[str, str]] = None
     reel_name: Optional[str] = None
     timecode: Optional['TimecodeConfig'] = None
+    metadata_mapping: Optional[Dict[str, str]] = None
 
 @dataclasses.dataclass
 class TimecodeConfig:

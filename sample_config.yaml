@@ -8,6 +8,17 @@ globals:
     darwin: /System/Library/Fonts/Helvetica.ttc
     linux: /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
     win32: C:/Windows/Fonts/arial.ttf
+  metadata_mapping:
+    Shot: shot
+    Version: version
+    Frame Range: frame_range
+    first_frame: first_frame
+    last_frame: last_frame
+    source_frame_rate: source_frame_rate
+    slate_length: slate_length
+    display_type: display_type
+    watermarking: watermarking
+    source_filename: source_filename
 output_codecs:
   h264_hq:
     codec: libx264

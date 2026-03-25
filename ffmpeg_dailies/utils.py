@@ -230,7 +230,30 @@ def populate_implicit_metadata(metadata: dict, input_media: str, dynamic_config:
             count = get_video_frame_count(input_media)
             if count > 0:
                 metadata["Frame Range"] = f"0-{count-1}"
-                
+
+    # 4. Production Standard Metadata
+    if "source_filename" not in metadata:
+        metadata["source_filename"] = input_media
+
+    # Attempt to resolve frame-specific production metadata
+    if "first_frame" not in metadata or "last_frame" not in metadata:
+        if "@" in input_media or "#" in input_media or "%" in input_media:
+            try:
+                dirname = os.path.dirname(input_media)
+                seqs = fileseq.findSequencesOnDisk(dirname)
+                if seqs:
+                    seq = seqs[0]
+                    metadata["first_frame"] = str(seq.start())
+                    metadata["last_frame"] = str(seq.end())
+            except Exception:
+                pass
+        else:
+            # Video file
+            metadata["first_frame"] = "0"
+            count = get_video_frame_count(input_media)
+            if count > 0:
+                metadata["last_frame"] = str(count - 1)
+
     return metadata
 
 def resolve_reel_name(ctx: 'DailiesContext', source_meta: dict) -> str:
