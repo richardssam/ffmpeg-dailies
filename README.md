@@ -13,24 +13,20 @@ Slate Layout GUI to help position the slate fields:
 ## Features
 
 - **Slate generation** — configurable title card with metadata fields and a PIP thumbnail from the middle of the clip
-- **Burn-in overlays** — frame counter, filename, shot, show title, notes, and vendor text at configurable screen positions
-- **GUI Layout Editor** — visual web-based editor to drag and drop slate fields and preview layouts in real-time
+- **Fast Encoding** — Keeping the slate generation, burnin and OCIO conversion in one tool makes it much faster than using Nuke or other tools.
+- **Burn-in overlays** — frame number, timecode, filename, shot, show title, notes, and vendor text at configurable screen positions
+- **GUI Layout Editor** — visual web-based editor help position the slate fields.
 - **OCIO colour management** — uses FFmpeg's `ocio` filter with any ACES or studio config
-- **YAML-driven layout** — all visual elements, codecs, and metadata are defined in a single config file
+- **YAML-driven configuration** — all visual elements, codecs, and metadata are defined in a single config file
 - **Python API** — call `ffmpeg_dailies.render()` directly from ShotGrid, Nuke, or any Python environment
-- **Dry-run mode** — get the FFmpeg command as a list of strings for farm submission without executing it
-- **Verbose logging** — use `--verbose` to see the full FFmpeg command and human-readable filter graphs
-- **Global pipeline control** — inject custom video filters (`vf`) and FFmpeg flags (`args`) globally
-- **Optional Slates** — toggle the preroll title card on/off via configuration
-- **Professional Metadata** — automated mapping of internal tokens to professional-grade FFmpeg metadata
-- **Cross-platform font support** — per-OS font paths in config (`darwin`, `linux`, `win32`)
+- **Movie metadata** — writes additional metadata to the output movie file.
 
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.10+
-- FFmpeg with `libx264` and OCIO support, see: <https://github.com/sam-k-smith/ffmpeg-build-ocio>
+- FFmpeg with `libx264` and OCIO support, see: [Building FFmpeg with OCIO using Conan](https://github.com/richardssam/EncodingGuidelines/blob/ffmpegocio/conan/README.md)
 
 ### Setup
 
@@ -42,7 +38,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Visual Layout Editor (NEW)
+### Visual Layout Editor
 
 Launch the web-based GUI to edit your `sample_config.yaml` and preview slate fields visually.
 
@@ -312,6 +308,7 @@ ffmpeg-dailies/
 │   └── golden_frame.png  # Reference image for visual regression
 ├── tools/
 │   └── generate_slate_template.py  # Generates the base_slate.exr template
+│   └── generate_test_media.py      # Generates synthetic test media
 ├── sample_config.yaml    # Example configuration
 ├── run_dailies           # Shell wrapper for CLI
 └── requirements.txt      # Python dependencies
