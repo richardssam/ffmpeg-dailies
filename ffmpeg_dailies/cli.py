@@ -27,6 +27,7 @@ def parse_args():
     parser.add_argument("--meta-shot", help="Shot meta")
     parser.add_argument("--dry-run", action="store_true", help="Print the command without running it.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show the FFmpeg command and detailed filter graph.")
+    parser.add_argument("--codec", help="Override output codec profile (e.g. h264_hq, prores)")
 
     parser.add_argument("--fit", action="store_true", help="Preserve aspect ratio by padding", default=None)
 
@@ -61,7 +62,8 @@ def main():
         timecode=args.timecode,
         fit=args.fit,
         dry_run=args.dry_run,
-        verbose=args.verbose
+        verbose=args.verbose,
+        output_codec=args.codec
     )
 
     if args.dry_run:

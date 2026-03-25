@@ -22,7 +22,8 @@ def render(
     fit: bool = None,
     timecode: str = None,
     dry_run: bool = False,
-    verbose: bool = False
+    verbose: bool = False,
+    output_codec: str = None
 ) -> list[str]:
     """
     Programmatic entry point for generating dailies via FFmpeg.
@@ -108,6 +109,9 @@ def render(
     from .utils import extract_source_metadata, get_start_timecode, resolve_reel_name
     source_meta = extract_source_metadata(input_media)
     
+    if output_codec:
+        globals_config.output_codec = output_codec
+        
     ctx = DailiesContext(
         input_settings=input_settings,
         output_settings=output_settings,
