@@ -21,7 +21,8 @@ def render(
     target_height: int = None,
     fit: bool = None,
     timecode: str = None,
-    dry_run: bool = False
+    dry_run: bool = False,
+    verbose: bool = False
 ) -> list[str]:
     """
     Programmatic entry point for generating dailies via FFmpeg.
@@ -136,12 +137,14 @@ def render(
         import tempfile
         # Use a temporary file to avoid command line length limits
         with tempfile.NamedTemporaryFile(suffix=".fg", mode="w", delete=False) as f:
-            f.write(filter_complex)
+            # Make the filter graph slightly more human readable by adding newlines
+            readable_filter = filter_complex.replace(";", ";\n\n")
+            f.write(readable_filter)
             script_path = f.name
             
         try:
             cmd = build_ffmpeg_command(ctx, filter_script_path=script_path)
-            run_ffmpeg(cmd)
+            run_ffmpeg(cmd, verbose=verbose)
         finally:
             if os.path.exists(script_path):
                 os.remove(script_path)

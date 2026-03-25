@@ -26,6 +26,7 @@ def parse_args():
     parser.add_argument("--meta-date", help="Date Delivered meta")
     parser.add_argument("--meta-shot", help="Shot meta")
     parser.add_argument("--dry-run", action="store_true", help="Print the command without running it.")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Show the FFmpeg command and detailed filter graph.")
 
     parser.add_argument("--fit", action="store_true", help="Preserve aspect ratio by padding", default=None)
 
@@ -59,7 +60,8 @@ def main():
         target_height=args.target_height,
         timecode=args.timecode,
         fit=args.fit,
-        dry_run=args.dry_run
+        dry_run=args.dry_run,
+        verbose=args.verbose
     )
 
     if args.dry_run:

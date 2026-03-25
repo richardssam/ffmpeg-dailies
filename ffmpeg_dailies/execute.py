@@ -188,23 +188,37 @@ def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, fi
     
     return cmd
 
-def run_ffmpeg(cmd: list[str]) -> None:
+def run_ffmpeg(cmd: list[str], verbose: bool = False) -> None:
     """
     Executes the constructed FFmpeg command as a synchronous subprocess.
-    
-    Args:
-        cmd: A list of string arguments forming the execution array.
-        
-    Raises:
-        subprocess.CalledProcessError: If FFmpeg exits with a non-zero status code indicating failure.
     """
-    logger.info("Executing FFmpeg command:")
-    logger.info(" ".join(cmd))
-    print("Executed ffmpeg command:")
-    print(" ".join(cmd))
+    # Look for the filter script path in the command to print it if verbose
+    script_path = None
+    if "-/filter_complex" in cmd:
+        idx = cmd.index("-/filter_complex")
+        if idx + 1 < len(cmd):
+            script_path = cmd[idx+1]
+
+    if verbose:
+        print("\n" + "="*80)
+        print("FFMPEG COMMAND:")
+        print(" ".join(cmd))
+        
+        if script_path and os.path.exists(script_path):
+            print("\nFFMPEG FILTER GRAPH:")
+            with open(script_path, "r") as f:
+                print(f.read())
+        print("="*80 + "\n")
+
     try:
+        # We still log to the logger regardless
+        logger.info(f"Executing: {' '.join(cmd)}")
         subprocess.run(cmd, check=True)
-        logger.info("Success!")
+        if verbose:
+            print("Execution successful!")
     except subprocess.CalledProcessError as e:
-        logger.error(f"FFmpeg failed with exit code {e.returncode}")
+        # Always print the command on failure to help debugging
+        if not verbose:
+            print(f"FFmpeg failed with exit code {e.returncode}. Command:")
+            print(" ".join(cmd))
         raise
