@@ -55,7 +55,9 @@ def parse_burnin_config(config: Dict[str, Any], output_width: int, output_height
         target_width=output_width,
         target_height=output_height,
         fonts=burnin_cfg.get("fonts", {}),
-        global_font_size=global_font_size
+        global_font_size=global_font_size,
+        font_color=burnin_cfg.get("font_color"),
+        background_color=burnin_cfg.get("background_color")
     )
 
 def parse_slate_config(config: Dict[str, Any], global_font_size: Optional[float] = None) -> SlateConfig:
@@ -83,7 +85,9 @@ def parse_slate_config(config: Dict[str, Any], global_font_size: Optional[float]
                 font_size=val.get("font_size"),
                 align=val.get("align", "left"),
                 max_width=int(val.get("max_width", 0)),
-                max_height=int(val.get("max_height", 0))
+                max_height=int(val.get("max_height", 0)),
+                font_color=val.get("font_color"),
+                background_color=val.get("background_color")
             )
         else:
             # Fallback simple string config
@@ -122,8 +126,9 @@ def parse_globals_config(config: Dict[str, Any]) -> GlobalsConfig:
         output_codec=glbs.get("output_codec"),
         font_size=glbs.get("font_size"),
         ffmpeg_bin=glbs.get("ffmpeg_bin"),
-        font=glbs.get("font"),
         reel_name=glbs.get("reel_name"),
+        font_color=glbs.get("font_color", "white"),
+        background_color=glbs.get("background_color", "black@0.5"),
         timecode=parse_timecode_config(glbs.get("timecode", {})) if "timecode" in glbs else None
     )
 

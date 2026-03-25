@@ -14,6 +14,8 @@ class GlobalsConfig:
     fit: Optional[bool] = None
     output_codec: Optional[str] = None
     font_size: Optional[float] = None
+    font_color: Optional[str] = "white"
+    background_color: Optional[str] = "black@0.5"
     ffmpeg_bin: Optional[str] = None
     font: Optional[Dict[str, str]] = None
     reel_name: Optional[str] = None
@@ -76,6 +78,8 @@ class BurninConfig:
     # font configuration map
     fonts: Dict[str, str] = dataclasses.field(default_factory=dict)
     global_font_size: Optional[float] = None
+    font_color: Optional[str] = None
+    background_color: Optional[str] = None
 
 @dataclasses.dataclass
 class SlateField:
@@ -87,6 +91,8 @@ class SlateField:
     align: str = "left"
     max_width: int = 0
     max_height: int = 0
+    font_color: Optional[str] = None
+    background_color: Optional[str] = None
 
 @dataclasses.dataclass
 class MetadataRule:
