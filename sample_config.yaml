@@ -47,6 +47,7 @@ dynamic_metadata:
     source: File Name
     regex: (v\d+)
 slate:
+  enabled: true
   template_image: base_slate.exr
   thumbnail_enabled: true
   fields:

@@ -100,7 +100,8 @@ def parse_slate_config(config: Dict[str, Any], global_font_size: Optional[float]
         thumbnail_x=slate_cfg.get("thumbnail_x"),
         thumbnail_y=slate_cfg.get("thumbnail_y"),
         thumbnail_width=slate_cfg.get("thumbnail_width"),
-        global_font_size=global_font_size
+        global_font_size=global_font_size,
+        enabled=slate_cfg.get("enabled", True)
     )
 
 def parse_globals_config(config: Dict[str, Any]) -> GlobalsConfig:

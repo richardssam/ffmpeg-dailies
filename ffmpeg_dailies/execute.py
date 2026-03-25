@@ -38,6 +38,9 @@ def get_filter_complex(ctx: DailiesContext) -> str:
     """
     Generates the core FFmpeg filtergraph string from the context.
     """
+    if not ctx.slate_config.enabled:
+        return build_video_filtergraph(ctx, "[0:v]")
+
     # Determine the middle frame for the PIP thumbnail
     mid_frame = get_middle_frame_index(
         ctx.input_settings.path, 
@@ -83,7 +86,7 @@ def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, fi
     
     # Check if we have a template image (this is a bit of a leak from build_filter_complex)
     # but we need it for the -i flags.
-    if ctx.slate_config.template_image and ctx.slate_config.template_image != "":
+    if ctx.slate_config.enabled and ctx.slate_config.template_image and ctx.slate_config.template_image != "":
         cmd.extend([
             "-i", ctx.slate_config.template_image
         ])
@@ -96,8 +99,9 @@ def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, fi
         # Generate on the fly if not provided
         cmd.extend(["-filter_complex", get_filter_complex(ctx)])
         
+    out_map = "[final_v]" if ctx.slate_config.enabled else "[video_out]"
     cmd.extend([
-        "-map", "[final_v]",
+        "-map", out_map,
     ])
     
     # Map Output Codec Profile
