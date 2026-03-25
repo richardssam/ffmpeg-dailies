@@ -45,6 +45,17 @@ def generate_test_media(output_dir: str, frames: int = 24, fps: int = 24):
         mov_meta_path
     ]
     
+    # 4. Complex Path Sequence (Shot/Version)
+    complex_dir = os.path.join(output_dir, "shots", "SH010", "v001")
+    os.makedirs(complex_dir, exist_ok=True)
+    complex_pattern = os.path.join(complex_dir, "SH010_v001.%04d.exr")
+    cmd_complex = [
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", f"testsrc2=size=1280x720:rate={fps}:duration={frames/fps}",
+        "-start_number", "1001",
+        complex_pattern
+    ]
+    
     print(f"Generating EXR sequence (1001) to {exr_dir}...")
     subprocess.run(cmd_exr, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
@@ -53,6 +64,9 @@ def generate_test_media(output_dir: str, frames: int = 24, fps: int = 24):
     
     print(f"Generating Metadata MOV to {mov_meta_path}...")
     subprocess.run(cmd_mov_meta, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    print(f"Generating Complex Shot/Version Sequence to {complex_dir}...")
+    subprocess.run(cmd_complex, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
     print("\nRequested test media variants generated successfully!")
 
