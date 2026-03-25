@@ -20,7 +20,8 @@ def resolve_input(input_path: str):
         
     try:
         # findSequencesOnDisk returns a list of FileSequences found on disk for the given pattern
-        seq_list = fileseq.findSequencesOnDisk(input_path)
+        dirname = os.path.dirname(input_path) or "."
+        seq_list = fileseq.findSequencesOnDisk(dirname)
         if not seq_list:
             # fallback if no sequence found on disk but pattern provided
             seq = fileseq.FileSequence(input_path)
@@ -163,7 +164,8 @@ def populate_implicit_metadata(metadata: dict, input_media: str, dynamic_config:
         # Get a clean basename
         if "@" in input_media or "#" in input_media or "%" in input_media:
             try:
-                seqs = fileseq.findSequencesOnDisk(os.path.dirname(input_media))
+                dirname = os.path.dirname(input_media) or "."
+                seqs = fileseq.findSequencesOnDisk(dirname)
                 if seqs:
                     metadata["File Name"] = seqs[0].basename().rstrip('.')
                 else:
@@ -239,7 +241,7 @@ def populate_implicit_metadata(metadata: dict, input_media: str, dynamic_config:
     if "first_frame" not in metadata or "last_frame" not in metadata:
         if "@" in input_media or "#" in input_media or "%" in input_media:
             try:
-                dirname = os.path.dirname(input_media)
+                dirname = os.path.dirname(input_media) or "."
                 seqs = fileseq.findSequencesOnDisk(dirname)
                 if seqs:
                     seq = seqs[0]

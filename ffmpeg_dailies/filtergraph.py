@@ -10,6 +10,15 @@ _PLATFORM_FONTS = {
     "win32": "C:/Windows/Fonts/arial.ttf",
 }
 
+# Average character width ratio for text wrapping heuristics
+# Assumed to be ~55% of font_size for typical sans-serif fonts.
+AVG_CHAR_WIDTH_RATIO = 0.55
+
+class _SafeDict(dict):
+    """A dictionary that returns the original key in brackets if missing, for string formatting."""
+    def __missing__(self, key):
+        return '{' + key + '}'
+
 def get_default_font(ctx: DailiesContext) -> str:
     """
     Returns the font path based on the config's per-OS font map, or a fallback platform-aware default.
@@ -75,7 +84,7 @@ def wrap_text_heuristic(text: str, max_width: int, font_size: float) -> str:
     if not max_width or max_width <= 0:
         return text
     
-    avg_char_w = font_size * 0.55
+    avg_char_w = font_size * AVG_CHAR_WIDTH_RATIO
     chars_per_line = max(1, int(max_width / avg_char_w))
     
     lines = []
@@ -122,13 +131,9 @@ def resolve_burnin_text(template: str, ctx: DailiesContext) -> str:
     """
     Evaluates a string template (like '{frame}') dynamically using the given context.
     """
-    class SafeDict(dict):
-        def __missing__(self, key):
-            return '{' + key + '}'
-            
     # Always include 'frame' as FFmpeg's active render variable %{frame_num}
     # For actual FFmpeg drawtext we must pass literal %{frame_num} so drawtext updates per frame.
-    eval_dict = SafeDict(ctx.metadata)
+    eval_dict = _SafeDict(ctx.metadata)
     eval_dict["frame"] = "%{frame_num}"
     
     if hasattr(ctx, 'resolved_timecode') and ctx.resolved_timecode:
@@ -246,11 +251,7 @@ def build_slate_filtergraph(ctx: DailiesContext, mid_frame: int = 1) -> Tuple[st
     y_offset = h // 4
     spacing = 60
     
-    class SafeDict(dict):
-        def __missing__(self, key):
-            return '{' + key + '}'
-            
-    safe_metadata = SafeDict(ctx.metadata)
+    safe_metadata = _SafeDict(ctx.metadata)
     
     if getattr(ctx, 'resolved_timecode', None):
         safe_metadata["timecode"] = ctx.resolved_timecode
@@ -402,7 +403,7 @@ def build_video_filtergraph(ctx: DailiesContext, input_stream: str = "[0:v]") ->
             resolved_suffix = resolve_burnin_text(suffix_template, ctx)
             
             # Heuristics for widths
-            char_w = font_size * 0.55
+            char_w = font_size * AVG_CHAR_WIDTH_RATIO
             # Assume frame counter is 4 digits if using %{n} or %{frame_num}
             w_prefix = len(resolved_prefix.replace("%{n}", "0000").replace("%{frame_num}", "0000")) * char_w
             w_tc = 11 * char_w

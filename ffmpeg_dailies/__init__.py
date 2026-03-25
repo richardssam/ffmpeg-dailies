@@ -106,7 +106,6 @@ def render(
         
     final_metadata = populate_implicit_metadata(final_metadata, input_media, dynamic_metadata_config)
     
-    from .utils import extract_source_metadata, get_start_timecode, resolve_reel_name
     source_meta = extract_source_metadata(input_media)
     
     if output_codec:
@@ -133,6 +132,27 @@ def render(
     # Resolve timecode and reel name using the context
     ctx.resolved_timecode = get_start_timecode(ctx, source_meta)
     ctx.resolved_reel = resolve_reel_name(ctx, source_meta)
+    
+    # If a slate is enabled, shift the bitstream timecode by -1 frame 
+    # so the FIRST video frame lands on the resolved_timecode.
+    if ctx.slate_config.enabled and ctx.resolved_timecode:
+        import opentimelineio as otio
+        tc_rate_str = str(ctx.input_settings.framerate or "24")
+        if "/" in tc_rate_str:
+            num, den = tc_rate_str.split("/")
+            tc_rate = float(num) / float(den) if float(den) != 0 else 24.0
+        else:
+            tc_rate = float(tc_rate_str)
+            
+        rt = otio.opentime.from_timecode(ctx.resolved_timecode, tc_rate)
+        # Shift back by 1 frame (the 1x slate frame)
+        rt_shifted = rt - otio.opentime.RationalTime(1, tc_rate)
+        
+        # Handle wrap-around at midnight
+        if rt_shifted.value < 0:
+            rt_shifted += otio.opentime.RationalTime(int(24 * 3600 * tc_rate), tc_rate)
+            
+        ctx.resolved_timecode = rt_shifted.to_timecode()
     
     from .execute import get_filter_complex
     filter_complex = get_filter_complex(ctx)

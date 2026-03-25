@@ -131,6 +131,7 @@ def parse_globals_config(config: Dict[str, Any]) -> GlobalsConfig:
         font_color=glbs.get("font_color", "white"),
         background_color=glbs.get("background_color", "black@0.5"),
         timecode=parse_timecode_config(glbs.get("timecode", {})) if "timecode" in glbs else None,
+        font=glbs.get("font"),
         metadata_mapping=glbs.get("metadata_mapping"),
         vf=_to_list(glbs.get("vf")),
         extra_args=_to_list(glbs.get("extra_args") or glbs.get("args"))
@@ -187,10 +188,10 @@ def parse_output_codecs(config: Dict[str, Any]) -> Dict[str, OutputCodecProfile]
     result = {}
     for name, profile in codecs.items():
         # Support legacy nested `profile_args` dict if it exists
-        legacy_args = profile.pop("profile_args", {})
+        legacy_args = profile.get("profile_args", {})
         
         # Collect everything else that isn't a known core key into profile_args
-        flat_args = {k: v for k, v in profile.items() if k not in ("codec", "crf", "preset")}
+        flat_args = {k: v for k, v in profile.items() if k not in ("codec", "crf", "preset", "profile_args")}
         
         # Merge them (flattened keys take precedence)
         merged_args = {**legacy_args, **flat_args}

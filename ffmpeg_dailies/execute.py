@@ -7,9 +7,27 @@ import fileseq
 import opentimelineio as otio
 from .models import DailiesContext
 from .filtergraph import build_slate_filtergraph, build_video_filtergraph
+from .utils import get_video_frame_count
 
 logger = logging.getLogger(__name__)
-from .utils import get_video_frame_count
+
+def check_ffmpeg_filters(ffmpeg_bin: str, required_filters: list[str]):
+    """
+    Checks if the given filters are available in the FFmpeg installation at ffmpeg_bin.
+    Raises RuntimeError if any filter is missing.
+    """
+    try:
+        res = subprocess.run([ffmpeg_bin, "-filters"], capture_output=True, text=True, check=True)
+        missing = [f for f in required_filters if f not in res.stdout]
+        if missing:
+            raise RuntimeError(
+                f"Missing required FFmpeg filter(s): {', '.join(missing)} in {ffmpeg_bin}. "
+                "Ensure your FFmpeg build includes --enable-libfreetype and font support."
+            )
+    except subprocess.CalledProcessError:
+        logger.warning(f"Could not verify FFmpeg filters via '{ffmpeg_bin} -filters'. Proceeding anyway.")
+    except FileNotFoundError:
+        raise RuntimeError(f"FFmpeg executable not found at: {ffmpeg_bin}")
 
 def get_middle_frame_index(input_path: str, is_sequence: bool = False, start_number: int = None) -> int:
     """
@@ -66,8 +84,12 @@ def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, fi
     Assembles the complete FFmpeg CLI command list.
     Supports either an inline filter_complex_str or a path to a filter_complex_script.
     """
-    # Resolution order: config YAML → $FFMPEG_BIN env var → "ffmpeg" on $PATH
     ffmpeg_bin = ctx.globals_config.ffmpeg_bin or os.environ.get("FFMPEG_BIN", "ffmpeg")
+
+    # 0. Validate requirements
+    # If using slates or burn-ins, we MUST have drawtext support
+    if ctx.slate_config.enabled or ctx.burnin_config.layout:
+        check_ffmpeg_filters(ffmpeg_bin, ["drawtext"])
     
     cmd = [
         ffmpeg_bin, "-y"
@@ -108,6 +130,8 @@ def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, fi
     codec_profile = None
     if ctx.globals_config.output_codec:
         codec_profile = ctx.output_codecs.get(ctx.globals_config.output_codec)
+        if not codec_profile:
+            raise ValueError(f"Unknown output_codec profile: '{ctx.globals_config.output_codec}'. Check your config.")
 
     if codec_profile:
         if codec_profile.codec:
@@ -137,17 +161,20 @@ def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, fi
     ])
 
     # 1. Enrich metadata with production-trackable info
-    if "source_frame_rate" not in ctx.metadata:
-        ctx.metadata["source_frame_rate"] = str(ctx.input_settings.framerate)
+    # Copy metadata to avoid side-effects on the context object
+    meta = ctx.metadata.copy()
+
+    if "source_frame_rate" not in meta:
+        meta["source_frame_rate"] = str(ctx.input_settings.framerate)
     
-    if "slate_length" not in ctx.metadata:
-        ctx.metadata["slate_length"] = "1" if ctx.slate_config.fields else "0"
+    if "slate_length" not in meta:
+        meta["slate_length"] = "1" if (ctx.slate_config.enabled and ctx.slate_config.fields) else "0"
         
-    if "display_type" not in ctx.metadata and ctx.ocio_settings.enabled:
-        ctx.metadata["display_type"] = f"{ctx.ocio_settings.output_space or ctx.ocio_settings.display} ({ctx.ocio_settings.view})"
+    if "display_type" not in meta and ctx.ocio_settings.enabled:
+        meta["display_type"] = f"{ctx.ocio_settings.output_space or ctx.ocio_settings.display} ({ctx.ocio_settings.view})"
         
-    if "watermarking" not in ctx.metadata:
-        ctx.metadata["watermarking"] = "True" if ctx.burnin_config.layout else "False"
+    if "watermarking" not in meta:
+        meta["watermarking"] = "True" if ctx.burnin_config.layout else "False"
 
     # 2. Add metadata flags based on mappings
     default_mappings = {
@@ -161,13 +188,13 @@ def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, fi
     
     # Ensure resolved_reel and resolved_timecode are available for mapping if not already there
     if ctx.resolved_reel:
-        ctx.metadata["reel"] = ctx.resolved_reel
+        meta["reel"] = ctx.resolved_reel
         
     mappings = default_mappings.copy()
     if ctx.globals_config.metadata_mapping:
         mappings.update(ctx.globals_config.metadata_mapping)
         
-    for key, value in ctx.metadata.items():
+    for key, value in meta.items():
         # Skip special internal tokens that are handled differently
         if key in ("timecode", "frame"):
             continue
@@ -181,7 +208,7 @@ def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, fi
 
     # Timecode is still handled via the -timecode flag for better container support
     if ctx.resolved_timecode:
-        start_tc = ctx.resolved_timecode
+        cmd.extend(["-timecode", ctx.resolved_timecode])
 
     # 3. Format-specific compatibility flags
     ext = os.path.splitext(ctx.output_settings.path)[1].lower()
