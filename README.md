@@ -19,7 +19,7 @@ Slate Layout GUI to help position the slate fields:
 - **Burn-in overlays** — frame number, timecode, filename, shot, show title, notes, and vendor text at configurable screen positions
 - **GUI Layout Editor** — visual web-based editor help position the slate fields.
 - **OCIO colour management** — uses FFmpeg's `ocio` filter with any ACES or studio config
-- **YAML-driven configuration** — all visual elements, codecs, and metadata are defined in a single config file
+- **YAML-driven configuration** — all visual elements, codecs, and metadata are defined in a single config file.
 - **Python API** — call `ffmpeg_dailies.render()` directly from ShotGrid, Nuke, or any Python environment
 - **Movie metadata** — writes additional metadata to the output movie file.
 
@@ -48,7 +48,7 @@ Launch the web-based GUI to edit your `sample_config.yaml` and preview slate fie
 python -m ffmpeg_dailies.gui --config sample_config.yaml --input /path/to/media.mov
 ```
 
-Open `http://localhost:8080` to drag fields, edit text templates, and save layout changes back to your YAML.
+This should launch a web page at `http://localhost:8080` where you can position fields, edit text templates, and save layout changes back to your YAML.
 
 ### Run via CLI
 
@@ -115,7 +115,11 @@ usage: run_dailies [-h] --config CONFIG --input INPUT --output OUTPUT
 
 ## Configuration
 
-All layout, codecs, and metadata are configured in a single YAML file. See [`sample_config.yaml`](sample_config.yaml) for a complete example.
+All layout, codecs, and metadata are configured in a single YAML file.
+
+We provide two examples:
+*
+See [`sample_config.yaml`](sample_config.yaml) for a complete example.
 
 ### `globals`
 
