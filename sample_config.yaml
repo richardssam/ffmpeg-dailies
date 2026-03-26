@@ -19,8 +19,14 @@ globals:
     display_type: display_type
     watermarking: watermarking
     source_filename: source_filename
-  vf: "scale=in_color_matrix=bt709:out_color_matrix=bt709"
-  args: ["-color_primaries", "bt709", "-color_trc", "iec61966-2-1", "-colorspace", "bt709"]
+  vf: scale=in_color_matrix=bt709:out_color_matrix=bt709
+  args:
+  - -color_primaries
+  - bt709
+  - -color_trc
+  - iec61966-2-1
+  - -colorspace
+  - bt709
 output_codecs:
   h264_hq:
     codec: libx264
@@ -63,8 +69,8 @@ slate:
       max_height: 0
     Vendor:
       text: 'Vendor:  {Vendor Name}'
-      x: 901
-      y: 675
+      x: 136
+      y: 561
       font_size: 30
       align: left
       max_width: 612
@@ -86,7 +92,7 @@ slate:
       max_width: 561
       max_height: 141
     File Name:
-      text: 'File: {File Name}'
+      text: 'File:       {File Name}'
       x: 140
       y: 517
       font_size: 30
@@ -115,27 +121,19 @@ slate:
       y: 332
       font_size: 57
       align: left
-      max_width: 0
-      max_height: 0
-    Timecode:
-      text: 'TC: {timecode}'
-      x: 140
-      y: 400
-      font_size: 40
+      max_width: 576
+      max_height: 66
+    source_filename:
+      text: '{source_filename}'
+      x: 511
+      y: 755
+      font_size: 50
       align: left
-      max_width: 0
-      max_height: 0
-    Reel:
-      text: 'Reel: {reel}'
-      x: 140
-      y: 450
-      font_size: 30
-      align: left
-      max_width: 0
+      max_width: 2159
       max_height: 0
   thumbnail_x: 1028
   thumbnail_y: 83
-  thumbnail_width: 828
+  thumbnail_width: 834
 burnins:
   font_size: 40
   font_color: white

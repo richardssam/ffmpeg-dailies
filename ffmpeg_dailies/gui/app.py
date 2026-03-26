@@ -87,15 +87,8 @@ async def get_state():
     metadata = raw_config.get("metadata", {}).copy()
     metadata = populate_implicit_metadata(metadata, os.environ.get("FFMPEG_DAILIES_GUI_INPUT", ""), dynamic_cfg)
     
-    for meta_key in metadata:
-        if meta_key not in payload_fields and meta_key not in ["Notes", "Show Title", "Date Delivered", "Vendor Name"]:
-            payload_fields[meta_key] = {
-                "text": f"{{{meta_key}}}",
-                "x": None,
-                "y": None,
-                "font_size": slate_cfg.global_font_size or 50,
-                "font_file": "default" 
-            }
+    # We no longer auto-add every metadata key to payload_fields. 
+    # Users can add them manually via the UI "Add Field" button.
             
     # Hardcode some dummy output bounds (would ideally be dynamic off the active codec config)
     w = 1920
@@ -121,29 +114,23 @@ async def save_state(payload: SavePayload = Body(...)):
         raise HTTPException(status_code=500, detail=f"Failed to parse config: {e}")
         
     slate_block = raw_config.get("slate", {})
-    if "fields" not in slate_block:
-        slate_block["fields"] = {}
+    # We REPLACE the fields block to allow for deletion from the UI.
+    slate_block["fields"] = {}
         
     for key, updates in payload.fields.items():
-        if key not in slate_block["fields"]:
-            # If a field was inexplicably missing, init it from the key so we don't save a blank string
-            slate_block["fields"][key] = {"text": updates.get("text", f"{{{key}}}")}
-            
-        field_cfg = slate_block["fields"][key]
+        field_cfg = {
+            "text": updates.get("text", f"{{{key}}}")
+        }
         
-        # If the original config had a simple string ("{Show Title}"), we must convert it to a dict first to hold x/y
-        if isinstance(field_cfg, str):
-            field_cfg = {"text": field_cfg}
-            slate_block["fields"][key] = field_cfg
-            
         # Apply GUI updates
         if "x" in updates: field_cfg["x"] = updates["x"]
         if "y" in updates: field_cfg["y"] = updates["y"]
         if "font_size" in updates: field_cfg["font_size"] = updates["font_size"]
-        if "text" in updates: field_cfg["text"] = updates["text"]
         if "align" in updates: field_cfg["align"] = updates["align"]
         if "max_width" in updates: field_cfg["max_width"] = updates["max_width"]
         if "max_height" in updates: field_cfg["max_height"] = updates["max_height"]
+        
+        slate_block["fields"][key] = field_cfg
         
     if payload.thumbnail:
         if "x" in payload.thumbnail:

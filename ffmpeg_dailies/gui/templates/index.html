@@ -180,6 +180,30 @@
         .hidden {
             display: none !important;
         }
+
+        .metadata-suggestions {
+            margin-top: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .metadata-tag {
+            background: #444;
+            color: #ddd;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .metadata-tag:hover {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent-hover);
+        }
     </style>
 </head>
 
@@ -258,6 +282,24 @@
                     </div>
                 </div>
             </div>
+            
+            <button id="btn-delete-field" style="background-color: #d32f2f; margin-top: 15px;">Delete Selected Field</button>
+        </div>
+
+        <div class="control-group" id="add-field-panel">
+            <label>Add New Field</label>
+            <div class="control-row">
+                <input type="text" id="new-field-id" placeholder="Field ID (e.g. Project)">
+                <button id="btn-add-field" style="width: 80px; margin-bottom: 0;">Add</button>
+            </div>
+            
+            <div id="metadata-suggestions" class="metadata-suggestions">
+                <!-- Suggested tags injected here -->
+            </div>
+
+            <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 10px;">
+                Use {Token} in the template property after adding.
+            </p>
         </div>
 
         <div style="flex: 1;"></div>
@@ -289,6 +331,112 @@
             });
         }
 
+        const customResizeHandler = (eventData, transform, x, y) => {
+            const target = transform.target;
+            const pointer = canvas.getPointer(eventData);
+            const corner = transform.corner;
+            
+            let nw = target.width;
+            let nh = target.height;
+            let nTop = target.top;
+            let nLeft = target.left;
+
+            if (corner === 'br') {
+                nw = Math.max(10, Math.round(pointer.x - target.left));
+                nh = Math.max(10, Math.round(pointer.y - target.top));
+            } else if (corner === 'bl') {
+                const oldRight = target.left + target.width;
+                nw = Math.max(10, Math.round(oldRight - pointer.x));
+                nh = Math.max(10, Math.round(pointer.y - target.top));
+                nLeft = oldRight - nw;
+            } else if (corner === 'tr') {
+                const oldBottom = target.top + target.height;
+                nw = Math.max(10, Math.round(pointer.x - target.left));
+                nh = Math.max(10, Math.round(oldBottom - pointer.y));
+                nTop = oldBottom - nh;
+            } else if (corner === 'tl') {
+                const oldRight = target.left + target.width;
+                const oldBottom = target.top + target.height;
+                nw = Math.max(10, Math.round(oldRight - pointer.x));
+                nh = Math.max(10, Math.round(oldBottom - pointer.y));
+                nLeft = oldRight - nw;
+                nTop = oldBottom - nh;
+            } else if (corner === 'mb') {
+                nh = Math.max(10, Math.round(pointer.y - target.top));
+            } else if (corner === 'mr' || corner === 'ml') {
+                return fabric.controlsUtils.changeWidth(eventData, transform, x, y);
+            }
+            
+            target.set({
+                left: nLeft,
+                top: nTop,
+                width: nw,
+                max_width: nw,
+                max_height: nh,
+                height: nh,
+                stroke: nh > 0 ? '#007acc' : null,
+                strokeDashArray: nh > 0 ? [5, 5] : null,
+                strokeWidth: nh > 0 ? 1 : 0
+            });
+
+            // Update clipPath for real-time visual crop (Top-Aligned)
+            if (target.max_height > 0) {
+                target.clipPath = new fabric.Rect({
+                    originX: 'center',
+                    originY: 'top',
+                    left: 0,
+                    top: -target._getTransformedDimensions().y / (2 * target.scaleY),
+                    width: target.width,
+                    height: target.max_height,
+                    absolutePositioned: false
+                });
+            } else {
+                target.clipPath = null;
+            }
+
+            target.setCoords();
+            updatePropsFromCanvas({ target: target });
+            canvas.requestRenderAll();
+            return true;
+        };
+
+        function applyTextObjectOverrides(textObj) {
+            textObj._getTransformedDimensions = function(params) {
+                const dims = fabric.Textbox.prototype._getTransformedDimensions.call(this, params);
+                if (this.max_height > 0) {
+                    dims.y = this.max_height * this.scaleY;
+                }
+                return dims;
+            };
+
+            textObj._getTopOffset = function() {
+                return -this._getTransformedDimensions().y / (2 * this.scaleY);
+            };
+
+            textObj._scaleFontSize = function() { }; 
+
+            textObj.controls.tr.actionHandler = customResizeHandler;
+            textObj.controls.br.actionHandler = customResizeHandler;
+            textObj.controls.bl.actionHandler = customResizeHandler;
+            textObj.controls.tl.actionHandler = customResizeHandler;
+            textObj.controls.mb.actionHandler = customResizeHandler;
+
+            textObj.setControlsVisibility({
+                mt: false,
+                mb: true, 
+                ml: true,
+                mr: true,
+                mtr: false
+            });
+
+            textObj.set({
+                lockScalingX: false,
+                lockScalingY: false,
+                lockUniScaling: false,
+                lockScalingFlip: true
+            });
+        }
+
         // DOM Elements
         const propX = document.getElementById('prop-x');
         const propY = document.getElementById('prop-y');
@@ -308,6 +456,9 @@
         const previewOverlay = document.getElementById('accurate-preview-overlay');
         const btnTogglePreview = document.getElementById('btn-preview-toggle');
         const btnSave = document.getElementById('btn-save');
+        const btnDeleteField = document.getElementById('btn-delete-field');
+        const btnAddField = document.getElementById('btn-add-field');
+        const newFieldIdInput = document.getElementById('new-field-id');
         const statusMsg = document.getElementById('status-msg');
 
         async function init() {
@@ -325,6 +476,8 @@
                 height: h,
                 backgroundColor: 'black'
             });
+
+            renderMetadataSuggestions();
 
             // Try to load fast preview background
             try {
@@ -385,127 +538,11 @@
                     textAlign: field.align || 'left'
                 });
 
-                // Middle-bottom handle for visual height
-                textObj.setControlsVisibility({
-                    mt: false,
-                    mb: true, 
-                    ml: true,
-                    mr: true,
-                    mtr: false
-                });
-
-                // OVERRIDE: Fabric.Textbox ignores manual height. 
+                 // OVERRIDE: Fabric.Textbox ignores manual height. 
                 // We force the selection box (blue handles) to respect max_height by overriding _getTransformedDimensions.
-                textObj._getTransformedDimensions = function(params) {
-                    const dims = fabric.Textbox.prototype._getTransformedDimensions.call(this, params);
-                    if (this.max_height > 0) {
-                        dims.y = this.max_height * this.scaleY;
-                    }
-                    return dims;
-                };
+                applyTextObjectOverrides(textObj);
 
-                // FFmpeg matches Top-Alignment. Fabric centers text in fixed height by default.
-                // We override _getTopOffset to ensure text always starts at the top.
-                textObj._getTopOffset = function() {
-                    return -this._getTransformedDimensions().y / (2 * this.scaleY);
-                };
-
-                // OVERRIDE: Fabric.Textbox corners by default scale fontSize.
-                // We want them to resize the container box (width/height) instead.
-                // We manually re-map the corners to a custom coordinate-based resize handler.
-                const customResizeHandler = (eventData, transform, x, y) => {
-                    const target = transform.target;
-                    const pointer = canvas.getPointer(eventData);
-                    const corner = transform.corner;
-                    
-                    let nw = target.width;
-                    let nh = target.height;
-                    let nTop = target.top;
-                    let nLeft = target.left;
-
-                    if (corner === 'br') {
-                        nw = Math.max(10, Math.round(pointer.x - target.left));
-                        nh = Math.max(10, Math.round(pointer.y - target.top));
-                    } else if (corner === 'bl') {
-                        const oldRight = target.left + target.width;
-                        nw = Math.max(10, Math.round(oldRight - pointer.x));
-                        nh = Math.max(10, Math.round(pointer.y - target.top));
-                        nLeft = oldRight - nw;
-                    } else if (corner === 'tr') {
-                        const oldBottom = target.top + target.height;
-                        nw = Math.max(10, Math.round(pointer.x - target.left));
-                        nh = Math.max(10, Math.round(oldBottom - pointer.y));
-                        nTop = oldBottom - nh;
-                    } else if (corner === 'tl') {
-                        const oldRight = target.left + target.width;
-                        const oldBottom = target.top + target.height;
-                        nw = Math.max(10, Math.round(oldRight - pointer.x));
-                        nh = Math.max(10, Math.round(oldBottom - pointer.y));
-                        nLeft = oldRight - nw;
-                        nTop = oldBottom - nh;
-                    } else if (corner === 'mb') {
-                        nh = Math.max(10, Math.round(pointer.y - target.top));
-                    } else if (corner === 'mr' || corner === 'ml') {
-                        return fabric.controlsUtils.changeWidth(eventData, transform, x, y);
-                    }
-                    
-                    target.set({
-                        left: nLeft,
-                        top: nTop,
-                        width: nw,
-                        max_width: nw,
-                        max_height: nh,
-                        height: nh, // Back to setting height for handle honesty
-                        stroke: nh > 0 ? '#007acc' : null,
-                        strokeDashArray: nh > 0 ? [5, 5] : null,
-                        strokeWidth: nh > 0 ? 1 : 0
-                    });
-
-                    // Update clipPath for real-time visual crop (Top-Aligned)
-                    if (target.max_height > 0) {
-                        target.clipPath = new fabric.Rect({
-                            originX: 'center',
-                            originY: 'top',
-                            left: 0,
-                            top: -target._getTransformedDimensions().y / (2 * target.scaleY),
-                            width: target.width,
-                            height: target.max_height,
-                            absolutePositioned: false
-                        });
-                    } else {
-                        target.clipPath = null;
-                    }
-
-                    target.setCoords();
-                    updatePropsFromCanvas({ target: target });
-                    canvas.requestRenderAll();
-                    return true;
-                };
-                
-                textObj._scaleFontSize = function() { }; 
-                
-                textObj.controls.tr.actionHandler = customResizeHandler;
-                textObj.controls.br.actionHandler = customResizeHandler;
-                textObj.controls.bl.actionHandler = customResizeHandler;
-                textObj.controls.tl.actionHandler = customResizeHandler;
-                textObj.controls.mb.actionHandler = customResizeHandler;
-
-                // Ensure corners are enabled and not limited
-                textObj.setControlsVisibility({
-                    mt: false,
-                    mb: true, 
-                    ml: true,
-                    mr: true,
-                    mtr: false
-                });
-
-                // Set flags to allow X and Y scaling independently
-                textObj.set({
-                    lockScalingX: false,
-                    lockScalingY: false,
-                    lockUniScaling: false,
-                    lockScalingFlip: true
-                });
+                // Store metadata reference
 
                 // Store metadata reference
                 textObj.id = key;
@@ -672,6 +709,14 @@
             // Bind Buttons
             btnSave.addEventListener('click', saveState);
             btnTogglePreview.addEventListener('click', toggleFFmpegPreview);
+            btnDeleteField.addEventListener('click', deleteSelectedField);
+            btnAddField.addEventListener('click', () => {
+                const id = newFieldIdInput.value.trim();
+                if (id) {
+                    addNewField(id);
+                    newFieldIdInput.value = '';
+                }
+            });
         }
 
         function scaleCanvasToFit() {
@@ -728,6 +773,7 @@
             propY.value = Math.round(obj.top);
 
             if (obj.isText) {
+                btnDeleteField.classList.remove('hidden');
                 propFontSize.value = Math.round(obj.fontSize);
                 propTemplate.value = obj.templateText || "";
                 propText.value = obj.text || "";
@@ -737,8 +783,84 @@
                 obj.max_width = Math.round(obj.width); 
                 propMaxHeight.value = obj.max_height || 0;
             } else if (obj.isPIP) {
+                btnDeleteField.classList.add('hidden'); // Don't allow deleting PIP
                 propWidth.value = Math.round(obj.width * obj.scaleX);
             }
+        }
+
+        function deleteSelectedField() {
+            const obj = canvas.getActiveObject();
+            if (!obj || !obj.isText) return;
+
+            if (confirm(`Are you sure you want to delete the field "${obj.id}"?`)) {
+                canvas.remove(obj);
+                onSelectionCleared();
+                hasUnsavedChanges = true;
+                renderMetadataSuggestions(); // Refresh suggestions to show deleted field
+            }
+        }
+
+        function addNewField(id) {
+            // Check if ID already exists
+            const existing = canvas.getObjects().find(o => o.id === id);
+            if (existing) {
+                alert(`A field with ID "${id}" already exists.`);
+                canvas.setActiveObject(existing);
+                return;
+            }
+
+            const w = canvas.width;
+            const h = canvas.height;
+            
+            // Create a new Textbox similar to init logic
+            const fSize = 50;
+            const templateText = `{${id}}`;
+            const evaluatedText = evaluateTemplate(templateText, configMetadata);
+            const initialWidth = Math.round(w * 0.3);
+
+             const textObj = new fabric.Textbox(evaluatedText, {
+                left: w / 2 - initialWidth / 2,
+                top: h / 2 - 25,
+                width: initialWidth,
+                fontSize: fSize,
+                fill: 'white',
+                fontFamily: 'sans-serif',
+                originX: 'left',
+                originY: 'top',
+                textAlign: 'left'
+            });
+
+            // Apply same overrides and controls as in init()
+            applyTextObjectOverrides(textObj);
+            
+            textObj.id = id;
+            textObj.isText = true;
+            textObj.templateText = templateText;
+            textObj.align = 'left';
+            textObj.max_width = initialWidth;
+            textObj.max_height = 0;
+
+            canvas.add(textObj);
+            canvas.setActiveObject(textObj);
+            hasUnsavedChanges = true;
+            renderMetadataSuggestions(); // Refresh suggestions to hide what was added
+        }
+
+        function renderMetadataSuggestions() {
+            const container = document.getElementById('metadata-suggestions');
+            container.innerHTML = '';
+
+            const onCanvasIds = new Set(canvas.getObjects().map(o => o.id));
+
+            Object.keys(configMetadata).sort().forEach(key => {
+                if (onCanvasIds.has(key)) return;
+
+                const tag = document.createElement('div');
+                tag.className = 'metadata-tag';
+                tag.textContent = key;
+                tag.onclick = () => addNewField(key);
+                container.appendChild(tag);
+            });
         }
 
         function updateCanvasFromProps(fromTemplate = false) {
