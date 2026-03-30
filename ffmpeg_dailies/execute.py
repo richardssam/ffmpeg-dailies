@@ -199,7 +199,11 @@ def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, fi
         if key in ("timecode", "frame"):
             continue
             
-        target_key = mappings.get(key, key)
+        if key in mappings:
+            target_key = mappings[key]
+        else:
+            # Apply normalization: lower case and replace spaces with underscores
+            target_key = key.lower().replace(" ", "_")
         if target_key.startswith("s:v:0:"):
             real_key = target_key[6:]
             cmd.extend(["-metadata:s:v:0", f"{real_key}={value}"])
