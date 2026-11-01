@@ -579,3 +579,184 @@ def test_burnin_combined_tokens():
     assert "text=' [%{frame_num}]':x=1116" in fg
 
 
+
+def test_percent_in_metadata_is_not_expanded():
+    """
+    Validates that a '%' in a metadata value (e.g. a '%04d' sequence filename) is escaped for drawtext,
+    while the {frame} token still expands to %{frame_num}.
+    """
+    from ffmpeg_dailies.models import GlobalsConfig
+    from ffmpeg_dailies.filtergraph import build_video_filtergraph, build_slate_filtergraph
+    
+    ctx = DailiesContext(
+        input_settings=InputSettings(path="test.mov", framerate="24", width=1920, height=1080, is_image_sequence=False),
+        output_settings=OutputSettings(path="out.mov", target_width=1920, target_height=1080),
+        ocio_settings=OCIOSettings(),
+        slate_config=SlateConfig(fields={"File": SlateField(text="{source}", x=100, y=100)}),
+        burnin_config=BurninConfig(layout={"lower_left": "{source} {frame}"}),
+        metadata={"source": "shot.%04d.exr"},
+        globals_config=GlobalsConfig(font_size=40)
+    )
+    
+    fg = build_video_filtergraph(ctx, "[0:v]")
+    assert "text='shot.\\\\%04d.exr %{frame_num}'" in fg
+    
+    slate_fg, _ = build_slate_filtergraph(ctx)
+    assert "text='File\\: shot.\\\\%04d.exr'" in slate_fg
+
+def test_zscale_colour_pipeline():
+    """
+    Validates the colour handling: OCIO before scaling, zscale to 10-bit 4:4:4 BT.709 on each branch,
+    a 10-bit overlay, and a single conversion to the encoder format with setparams after concat.
+    """
+    from ffmpeg_dailies.models import GlobalsConfig, OutputCodecProfile
+    from ffmpeg_dailies.execute import get_filter_complex
+    from unittest import mock
+    
+    ctx = DailiesContext(
+        input_settings=InputSettings(path="shot.%04d.exr", framerate="24", width=1920, height=1080, is_image_sequence=True, start_number=1001),
+        output_settings=OutputSettings(path="out.mov", target_width=1920, target_height=1080),
+        ocio_settings=OCIOSettings(enabled=True, config_path="config.ocio", input_space="ACEScg", output_space="sRGB - Display", view="ACES 1.0 - SDR Video"),
+        slate_config=SlateConfig(enabled=True, template_image="slate.jpg", thumbnail_enabled=True, fields={}),
+        burnin_config=BurninConfig(),
+        metadata={},
+        globals_config=GlobalsConfig(output_codec="h264_hq"),
+        output_codecs={"h264_hq": OutputCodecProfile(codec="libx264", profile_args={"pix_fmt": "yuv420p10le"})}
+    )
+    
+    with mock.patch("ffmpeg_dailies.execute.get_middle_frame_index", return_value=12):
+        fg = get_filter_complex(ctx)
+    
+    to_444 = "format=gbrp16le,zscale=matrix=709:range=limited:filter=lanczos,format=yuv444p10le"
+    # Main video: OCIO, then scale/pad, then zscale
+    assert "[main_v]ocio=" in fg
+    assert f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,{to_444}" in fg
+    # Thumbnail: OCIO before scale
+    assert fg.index("[thumb_stream]select") < fg.index("view='ACES 1.0 - SDR Video':format=rgb48,scale=")
+    # Slate template keeps its own tags
+    assert "[1:v]zscale=w=1920:h=1080:matrix=709:range=limited:filter=lanczos,format=yuv444p10le" in fg
+    assert "overlay=x=" in fg and ":format=yuv444p10[slate_with_pip]" in fg
+    assert fg.endswith("concat=n=2:v=1:a=0,zscale=filter=lanczos,format=yuv420p10le,"
+                       "setparams=color_primaries=bt709:color_trc=iec61966-2-1[final_v]")
+    assert "scale=in_color_matrix" not in fg
+
+def test_untagged_yuv_source_gets_input_matrix():
+    """
+    Validates that zscale is told to assume BT.709 limited range for untagged Y'CbCr sources,
+    and is left to read the tags of tagged ones.
+    """
+    from ffmpeg_dailies.models import GlobalsConfig
+    from ffmpeg_dailies.filtergraph import build_source_to_rgb_filter
+    
+    def make_ctx(**tags):
+        return DailiesContext(
+            input_settings=InputSettings(path="test.mov", framerate="24", width=1920, height=1080, is_image_sequence=False, **tags),
+            output_settings=OutputSettings(path="out.mov", target_width=1920, target_height=1080),
+            ocio_settings=OCIOSettings(),
+            slate_config=SlateConfig(fields={}),
+            burnin_config=BurninConfig(),
+            metadata={},
+            globals_config=GlobalsConfig()
+        )
+    
+    untagged = build_source_to_rgb_filter(make_ctx(pix_fmt="yuv420p", color_space="unknown", color_range="unknown"))
+    assert ":matrixin=709:rangein=limited" in untagged
+    
+    tagged = build_source_to_rgb_filter(make_ctx(pix_fmt="yuv422p10le", color_space="bt709", color_range="tv"))
+    assert "matrixin" not in tagged and "rangein" not in tagged
+    
+    rgb = build_source_to_rgb_filter(make_ctx(pix_fmt="gbrpf32le", color_space="unknown", color_range="unknown"))
+    assert "matrixin" not in rgb
+
+def test_scaling_and_padding_in_rgb():
+    """
+    Validates that scaling and padding are done on RGB: without OCIO the source is converted to RGB first
+    (zscale cannot read 4:2:0 at odd sizes such as a 681x383 thumbnail, and FFmpeg's black in 10-bit Y'CbCr
+    is slightly off), and with OCIO its RGB output is used. Either way it is then converted to the working format.
+    """
+    from ffmpeg_dailies.models import GlobalsConfig
+    from ffmpeg_dailies.filtergraph import build_video_filtergraph, build_slate_filtergraph
+    
+    ctx = DailiesContext(
+        input_settings=InputSettings(path="test.mov", framerate="24", width=1280, height=720, is_image_sequence=False, pix_fmt="yuv420p", color_space="unknown", color_range="unknown"),
+        output_settings=OutputSettings(path="out.mov", target_width=1920, target_height=1080),
+        ocio_settings=OCIOSettings(),
+        slate_config=SlateConfig(thumbnail_enabled=True, thumbnail_width=681, fields={}),
+        burnin_config=BurninConfig(),
+        metadata={},
+        globals_config=GlobalsConfig()
+    )
+    
+    to_rgb = "zscale=filter=lanczos:matrixin=709:rangein=limited,format=gbrp16le"
+    to_working = "format=gbrp16le,zscale=matrix=709:range=limited:filter=lanczos,format=yuv444p10le"
+
+    fg = build_video_filtergraph(ctx, "[0:v]")
+    assert f"[0:v]{to_rgb},scale=1920:1080:" in fg
+    assert f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,{to_working}" in fg
+    slate_fg, _ = build_slate_filtergraph(ctx)
+    assert f"{to_rgb},scale=681:383:force_original_aspect_ratio=decrease,pad=681:383:(ow-iw)/2:(oh-ih)/2,{to_working}" in slate_fg
+    # The black slate background is generated in RGB too
+    assert f"color=c=black:s=1920x1080:r=24,{to_working}" in slate_fg
+
+    ctx.ocio_settings = OCIOSettings(enabled=True, config_path="config.ocio", input_space="ACEScg", output_space="sRGB - Display", view="ACES 1.0 - SDR Video")
+    fg = build_video_filtergraph(ctx, "[0:v]")
+    assert "format=rgb48[v_step_0];[v_step_0]scale=1920:1080:" in fg
+    assert "zscale=filter=lanczos" not in fg
+    assert f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,{to_working}" in fg
+
+@pytest.mark.parametrize("sequence, image_box", [
+    # Portrait 1080x1920 scaled to ~608x1080: pillarboxed, picture from x=656 to x=1264
+    ("portrait_1001", (656, 0, 1264, 1080)),
+    # 2.35:1 2048x872 scaled to 1920x~818: letterboxed, picture from y=131 to y=949
+    ("scope_1001", (0, 131, 1920, 949)),
+])
+def test_padding_non_16x9_sequences(tmp_path, sequence, image_box):
+    """
+    Renders a frame of a portrait and a 2.35:1 EXR sequence into 1920x1080 with fit enabled,
+    and checks the picture is centred with black bars around it.
+    """
+    import subprocess
+    exr_path = os.path.join(os.path.dirname(__file__), "data", sequence, "test_seq.%04d.exr")
+    if not os.path.exists(os.path.dirname(exr_path)):
+        pytest.skip("Test media not found. Run tools/generate_test_media.py")
+    
+    # No slate, burn-ins or OCIO, so the whole frame is the padded picture. Lossless, since a lossy codec
+    # leaks noise into the bars from the blocks that straddle the edge of the picture.
+    config_path = os.path.join(tmp_path, "config.yaml")
+    with open(config_path, "w") as f:
+        f.write("globals:\n  width: 1920\n  height: 1080\n  fit: true\n  output_codec: png\n"
+                "output_codecs:\n  png:\n    codec: png\n    pix_fmt: rgb24\n"
+                "slate:\n  enabled: false\nburnins:\n  layout: {}\nocio:\n  enabled: false\n")
+    
+    out_mov = os.path.join(tmp_path, "out.mov")
+    cmd = render(config_path=config_path, input_media=exr_path, output_media=out_mov, dry_run=True)
+    out_idx = cmd.index(out_mov)
+    cmd[out_idx:out_idx] = ["-frames:v", "1"]
+    subprocess.run(cmd, check=True, capture_output=True)
+    
+    ffmpeg_bin = os.environ.get("FFMPEG_BIN", "ffmpeg")
+    rgb = subprocess.run([ffmpeg_bin, "-v", "error", "-i", out_mov, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+                         check=True, capture_output=True).stdout
+    w, h = 1920, 1080
+    assert len(rgb) == w * h * 3
+    
+    def region_max(x0, y0, x1, y1):
+        return max(max(rgb[(y * w + x0) * 3:(y * w + x1) * 3]) for y in range(y0, y1))
+    
+    # Allow a couple of pixels either side of the edges for the rounding of the scaled size
+    left, top, right, bottom = image_box
+    margin = 2
+    bars = []
+    if left > 0:
+        bars += [(0, 0, left - margin, h), (right + margin, 0, w, h)]
+    if top > 0:
+        bars += [(0, 0, w, top - margin), (0, bottom + margin, w, h)]
+    for bar in bars:
+        assert region_max(*bar) == 0, f"padding at {bar} is not black"
+    
+    # The picture fills its box: the rows/columns just inside each edge have content
+    inner = (left + margin, top + margin, right - margin, bottom - margin)
+    assert region_max(inner[0], inner[1], inner[0] + 2, inner[3]) > 16
+    assert region_max(inner[2] - 2, inner[1], inner[2], inner[3]) > 16
+    assert region_max(inner[0], inner[1], inner[2], inner[1] + 2) > 16
+    assert region_max(inner[0], inner[3] - 2, inner[2], inner[3]) > 16

@@ -23,12 +23,35 @@ Slate Layout GUI to help position the slate fields:
 - **Python API** — call `ffmpeg_dailies.render()` directly from ShotGrid, Nuke, or any Python environment
 - **Movie metadata** — writes additional metadata to the output movie file.
 
+## Requirements
+
+- Python 3.10+
+- **FFmpeg 8.1 or later**, the first release with the `ocio` filter. Earlier versions can still run without OCIO, but then there is nothing to tag the output's colour primaries and transfer function, so the files come out untagged. See [Building FFmpeg with OCIO using Conan](https://github.com/richardssam/EncodingGuidelines/blob/ffmpegocio/conan/README.md).
+- `ffprobe` from the same build, on `$PATH`. It reads the source's frame count, timecode, reel name and colour tags.
+
+FFmpeg must be built with these filters:
+
+| Filter | Configure flags | Used for |
+| --- | --- | --- |
+| `ocio` | `--enable-libopencolorio` | The OCIO display transform |
+| `zscale` | `--enable-libzimg` | Every colour space, range and bit depth conversion. libswscale is not accurate enough for range conversions, and it clamps scene-linear float to 0.0 - 1.0. |
+| `drawtext` | `--enable-libfreetype --enable-libharfbuzz` | Slate text and burn-ins. Without libharfbuzz, FFmpeg leaves `drawtext` out even when libfreetype is enabled. |
+
+It also needs the encoders your `output_codecs` profiles use, e.g. `--enable-libx264 --enable-gpl` for `libx264`. `prores_ks` and `png` are built in.
+
+To check a build:
+
+```bash
+ffmpeg -hide_banner -filters | grep -wE "ocio|zscale|drawtext"
+```
+
+The tool checks for these filters itself before rendering, and stops with the missing ones listed. The graph has been tested on FFmpeg 8.1 and 9.0.2.
+
 ## Quick Start
 
 ### Prerequisites
 
-- Python 3.10+
-- FFmpeg 8.1+ with `libx264` and OCIO support, see: [Building FFmpeg with OCIO using Conan](https://github.com/richardssam/EncodingGuidelines/blob/ffmpegocio/conan/README.md)
+See [Requirements](#requirements).
 
 ### Setup
 
@@ -133,8 +156,8 @@ globals:
   output_codec: h264_hq      # references a key in output_codecs
   font_size: 44               # default font size for slate/burn-in text
   ffmpeg_bin: null             # path to ffmpeg binary, or null to use $FFMPEG_BIN / $PATH
-  vf: "scale=bt709:bt709"      # Optional: Global video filter applied to all media
-  args: ["-color_trc", "bt709"] # Optional: Extra FFmpeg arguments appended at the end
+  vf: "eq=saturation=0"        # Optional: Global video filter(s), applied after the colour conversion
+  args: ["-g", "24"]           # Optional: Extra FFmpeg arguments appended at the end
   metadata_mapping:            # Optional: Map internal tokens to FFmpeg metadata keys
     "Show Title": "title"
     "Shot": "shot"

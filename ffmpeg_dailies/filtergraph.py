@@ -52,13 +52,112 @@ def build_ocio_filter(ctx: DailiesContext) -> Optional[str]:
     if ctx.ocio_settings.view:
         ocio_params.append(f"view='{ctx.ocio_settings.view}'")
     if ocio_params:
+        # Integer output: the result is display-referred, so it can then be resized with scale/pad.
+        ocio_params.append("format=rgb48")
         return "ocio=" + ":".join(ocio_params)
     return None
+
+# The slate and burn-ins are drawn in 10-bit 4:4:4 BT.709 limited range. Everything is converted to it with
+# zscale (not libswscale, which is inaccurate on range conversions and clamps scene-linear float to 0.0-1.0).
+WORKING_PIX_FMT = "yuv444p10le"
+
+# Planar formats zscale can write for packed RGB encoder formats; FFmpeg repacks them losslessly.
+_PLANAR_EQUIVALENTS = {
+    "rgb24": "gbrp",
+    "bgr24": "gbrp",
+    "rgba": "gbrap",
+    "bgra": "gbrap",
+    "rgb48le": "gbrp16le",
+    "rgba64le": "gbrap16le",
+}
+
+# Converts planar RGB to the working format. zscale only takes planar RGB, so packed RGB (e.g. the OCIO
+# filter's rgb48) is repacked to gbrp16le first, losslessly.
+TO_WORKING_FORMAT = f"format=gbrp16le,zscale=matrix=709:range=limited:filter=lanczos,format={WORKING_PIX_FMT}"
+
+def build_source_to_rgb_filter(ctx: DailiesContext) -> str:
+    """
+    Converts the source as decoded to 16-bit planar RGB with zscale, for scaling and padding when there is no OCIO.
+
+    Args:
+        ctx: The active rendering context, for the source's colour tags.
+    """
+    zscale = "zscale=filter=lanczos"
+    # zscale fails on untagged Y'CbCr ("no path between colorspaces"), so assume HD video conventions.
+    src = ctx.input_settings
+    if src.pix_fmt and src.pix_fmt.startswith("yuv"):
+        if src.color_space in (None, "unknown"):
+            zscale += ":matrixin=709"
+        if src.color_range in (None, "unknown"):
+            zscale += ":rangein=limited"
+    return f"{zscale},format=gbrp16le"
+
+def build_scale_to_working_format(ctx: DailiesContext, scale_filter: str, ocio_filter: Optional[str]) -> str:
+    """
+    Scales/pads a branch in RGB and then converts it to the working format.
+
+    The scaling and padding are always done on RGB: after OCIO the data is display-referred RGB already, and
+    without OCIO the source is converted to RGB first. FFmpeg draws black in 10-bit Y'CbCr with Cb/Cr at 514
+    rather than 512, which shows as a magenta tint (RGB 1,0,1) in the padding; in RGB it is exactly 0.
+    It also avoids zscale's refusal to read subsampled Y'CbCr at odd sizes (e.g. a thumbnail scaled to 681x383).
+    """
+    chain = [] if ocio_filter else [build_source_to_rgb_filter(ctx)]
+    chain += [scale_filter, TO_WORKING_FORMAT]
+    return ",".join(chain)
+
+def get_display_transfer(display: Optional[str]) -> str:
+    """Maps an OCIO display name to the FFmpeg color_trc it encodes for."""
+    name = (display or "").lower()
+    if "1886" in name:
+        return "bt709"
+    if "gamma 2.2" in name:
+        return "gamma22"
+    if "srgb" not in name:
+        print(f"Warning: Unrecognised OCIO display '{display}', tagging output as sRGB.", file=sys.stderr)
+    return "iec61966-2-1"
+
+def get_output_pix_fmt(ctx: DailiesContext) -> Optional[str]:
+    """Returns the pixel format the encoder will be given, or None if the codec profile leaves it to FFmpeg."""
+    if ctx.globals_config.output_codec:
+        profile = ctx.output_codecs.get(ctx.globals_config.output_codec)
+        if profile:
+            return profile.profile_args.get("pix_fmt")
+    return "yuv420p"
+
+def build_output_conversion_filter(ctx: DailiesContext) -> str:
+    """
+    Converts the working format to the encoder's pixel format with zscale, and sets the colour tags.
+
+    FFmpeg tags EXR frames as linear and the OCIO filter does not change the tags, and from FFmpeg 7.1
+    -color_primaries/-color_trc no longer override them, so they have to be set with setparams.
+    """
+    filters = []
+    pix_fmt = get_output_pix_fmt(ctx)
+    if pix_fmt:
+        planar = _PLANAR_EQUIVALENTS.get(pix_fmt)
+        filters.append(f"zscale=filter=lanczos,format={planar or pix_fmt}")
+        if planar:
+            filters.append(f"format={pix_fmt}")
+    if ctx.ocio_settings.enabled:
+        trc = get_display_transfer(ctx.ocio_settings.output_space)
+        filters.append(f"setparams=color_primaries=bt709:color_trc={trc}")
+    return ",".join(filters) if filters else "copy"
 
 def escape_drawtext(text: str) -> str:
     """Escapes special characters specifically for FFmpeg's drawtext filter text parameter."""
     text = str(text).replace("\\", "\\\\").replace("'", "\\'").replace(":", "\\:")
     return text
+
+def escape_expansion(value) -> str:
+    """
+    Escapes '%' in a metadata value so drawtext prints it rather than expanding it (e.g. a '%04d' filename).
+    escape_drawtext then doubles the backslash, which is what drawtext needs inside a quoted text value.
+    """
+    return str(value).replace("%", "\\%")
+
+def escaped_metadata(metadata: Dict[str, str]) -> _SafeDict:
+    """Returns the metadata as a _SafeDict for template formatting, with each value escaped for drawtext expansion."""
+    return _SafeDict({k: escape_expansion(v) for k, v in metadata.items()})
 
 def escape_path_for_filtergraph(path: str) -> str:
     """
@@ -133,7 +232,7 @@ def resolve_burnin_text(template: str, ctx: DailiesContext) -> str:
     """
     # Always include 'frame' as FFmpeg's active render variable %{frame_num}
     # For actual FFmpeg drawtext we must pass literal %{frame_num} so drawtext updates per frame.
-    eval_dict = _SafeDict(ctx.metadata)
+    eval_dict = escaped_metadata(ctx.metadata)
     eval_dict["frame"] = "%{frame_num}"
     
     if hasattr(ctx, 'resolved_timecode') and ctx.resolved_timecode:
@@ -183,10 +282,11 @@ def build_slate_filtergraph(ctx: DailiesContext, mid_frame: int = 1) -> Tuple[st
     if has_template:
         # Template is the second input [1:v]
         # We need to scale it to exactly match target dimensions and trim it to 1 frame to be safe
-        filters.append(f"[1:v]scale={w}:{h},setsar=1,trim=end_frame=1[slate_bg]")
+        # zscale reads the template's own tags (e.g. a JPEG's BT.601 full range), so don't force the input matrix.
+        filters.append(f"[1:v]zscale=w={w}:h={h}:matrix=709:range=limited:filter=lanczos,format={WORKING_PIX_FMT},setsar=1,trim=end_frame=1[slate_bg]")
     else:
-        # Generate 1 frame of black with fixed SAR 1:1
-        filters.append(f"color=c=black:s={w}x{h}:r={fps},trim=end_frame=1,setsar=1[slate_bg]")
+        # Generate 1 frame of black with fixed SAR 1:1, in RGB as FFmpeg's black in 10-bit Y'CbCr is slightly off
+        filters.append(f"color=c=black:s={w}x{h}:r={fps},{TO_WORKING_FORMAT},trim=end_frame=1,setsar=1[slate_bg]")
     
     current_out = "[slate_bg]"
     
@@ -216,13 +316,19 @@ def build_slate_filtergraph(ctx: DailiesContext, mid_frame: int = 1) -> Tuple[st
                 crop_filter += f":{cx}:{cy}"
             crop_filter += ","
             
-        pip_chain = f"[thumb_stream]select='eq(n\\,{mid_frame})',{crop_filter}scale={thumb_w}:{thumb_h}:force_original_aspect_ratio=decrease"
-        
-        # Apply OCIO if enabled
+        pip_chain = f"[thumb_stream]select='eq(n\\,{mid_frame})',{crop_filter}"
+
+        # Apply OCIO if enabled, before scaling: scale clamps scene-linear float to 0.0-1.0
         ocio_filter = build_ocio_filter(ctx)
         if ocio_filter:
-            pip_chain += "," + ocio_filter
-            
+            pip_chain += ocio_filter + ","
+        # Pad to the full thumbnail box, so a portrait or scope source is centred in it rather than leaving
+        # part of the slate template's placeholder showing
+        pip_chain += build_scale_to_working_format(
+            ctx,
+            f"scale={thumb_w}:{thumb_h}:force_original_aspect_ratio=decrease,pad={thumb_w}:{thumb_h}:(ow-iw)/2:(oh-ih)/2",
+            ocio_filter)
+
         # Apply global vf filters to PIP
         if ctx.globals_config.vf:
             pip_chain += "," + ",".join(ctx.globals_config.vf)
@@ -235,7 +341,8 @@ def build_slate_filtergraph(ctx: DailiesContext, mid_frame: int = 1) -> Tuple[st
         # Overlay the PIP onto the slate background 
         pip_x = ctx.slate_config.thumbnail_x if ctx.slate_config.thumbnail_x is not None else w - thumb_w - 50
         pip_y = ctx.slate_config.thumbnail_y if ctx.slate_config.thumbnail_y is not None else 50
-        filters.append(f"{current_out}[pip]overlay=x={pip_x}:y={pip_y}[slate_with_pip]")
+        # overlay defaults to 8-bit 4:2:0, which would drag the whole graph (video too, via concat) down to it
+        filters.append(f"{current_out}[pip]overlay=x={pip_x}:y={pip_y}:format=yuv444p10[slate_with_pip]")
         current_out = "[slate_with_pip]"
 
     # Apply global vf filters to the slate background/template as well
@@ -251,7 +358,7 @@ def build_slate_filtergraph(ctx: DailiesContext, mid_frame: int = 1) -> Tuple[st
     y_offset = h // 4
     spacing = 60
     
-    safe_metadata = _SafeDict(ctx.metadata)
+    safe_metadata = escaped_metadata(ctx.metadata)
     
     if getattr(ctx, 'resolved_timecode', None):
         safe_metadata["timecode"] = ctx.resolved_timecode
@@ -355,21 +462,21 @@ def build_video_filtergraph(ctx: DailiesContext, input_stream: str = "[0:v]") ->
             crop_filter += f":{cx}:{cy}"
         filters.append(crop_filter)
     
-    # 1. Scale and pad to target dimensions, and force SAR 1:1
+    # 1. OCIO, before scaling: scale clamps scene-linear float to 0.0-1.0. Its output is display-referred.
+    ocio_filter = build_ocio_filter(ctx)
+    if ocio_filter:
+        filters.append(ocio_filter)
+
+    # 2. Scale and pad to target dimensions, and force SAR 1:1, then convert to the working format
     if fit:
         # force output aspect ratio by scaling proportionally and then padding
         scale_pad = f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1"
     else:
         # no padding: height is ignored, aspect ratio of the input is preserved relative to target width
         scale_pad = f"scale={w}:-2,setsar=1"
-        
-    filters.append(scale_pad)
-    
-    # 2. OCIO validation and filter
-    ocio_filter = build_ocio_filter(ctx)
-    if ocio_filter:
-        filters.append(ocio_filter)
-            
+
+    filters.append(build_scale_to_working_format(ctx, scale_pad, ocio_filter))
+
     # 3. Burn-ins
     drawtexts = []
     

@@ -14,7 +14,7 @@ from ffmpeg_dailies.config import load_config, parse_slate_config, parse_globals
 from ffmpeg_dailies.models import DailiesContext, InputSettings, OutputSettings
 from ffmpeg_dailies.execute import get_middle_frame_index
 from ffmpeg_dailies.filtergraph import build_slate_filtergraph
-from ffmpeg_dailies.utils import resolve_input, populate_implicit_metadata
+from ffmpeg_dailies.utils import resolve_input, populate_implicit_metadata, extract_source_metadata
 
 app = FastAPI(title="FFmpeg Dailies Slate Editor")
 
@@ -300,6 +300,13 @@ async def get_ffmpeg_preview():
         metadata=metadata
     )
     
+    if input_media and slate_cfg.thumbnail_enabled:
+        # The thumbnail's colour tags decide how zscale converts it
+        source_meta = extract_source_metadata(input_media)
+        ctx.input_settings.pix_fmt = source_meta.get("pix_fmt")
+        ctx.input_settings.color_space = source_meta.get("color_space")
+        ctx.input_settings.color_range = source_meta.get("color_range")
+
     mid_frame = 1
     if input_media and slate_cfg.thumbnail_enabled:
         mid_frame = get_middle_frame_index(input_media, ctx.input_settings.is_image_sequence, 1)

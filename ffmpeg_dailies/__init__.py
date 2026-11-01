@@ -107,7 +107,10 @@ def render(
     final_metadata = populate_implicit_metadata(final_metadata, input_media, dynamic_metadata_config)
     
     source_meta = extract_source_metadata(input_media)
-    
+    input_settings.pix_fmt = source_meta.get("pix_fmt")
+    input_settings.color_space = source_meta.get("color_space")
+    input_settings.color_range = source_meta.get("color_range")
+
     if output_codec:
         globals_config.output_codec = output_codec
         

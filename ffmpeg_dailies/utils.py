@@ -96,7 +96,15 @@ def extract_source_metadata(input_path: str) -> dict:
         data = json.loads(result.stdout)
         
         meta = {}
-        
+
+        # 0. Colour tags of the first video stream, so zscale can be told what to assume for untagged media
+        for stream in data.get("streams", []):
+            if stream.get("codec_type") == "video":
+                for key in ("pix_fmt", "color_space", "color_range"):
+                    if key in stream:
+                        meta[key] = stream[key]
+                break
+
         # 1. Search for timecode in streams
         for stream in data.get("streams", []):
             tags = stream.get("tags", {})

@@ -6,7 +6,7 @@ import re
 import fileseq
 import opentimelineio as otio
 from .models import DailiesContext
-from .filtergraph import build_slate_filtergraph, build_video_filtergraph
+from .filtergraph import build_slate_filtergraph, build_video_filtergraph, build_output_conversion_filter
 from .utils import get_video_frame_count
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,8 @@ def check_ffmpeg_filters(ffmpeg_bin: str, required_filters: list[str]):
         if missing:
             raise RuntimeError(
                 f"Missing required FFmpeg filter(s): {', '.join(missing)} in {ffmpeg_bin}. "
-                "Ensure your FFmpeg build includes --enable-libfreetype and font support."
+                "ocio needs FFmpeg 8.1 or later with --enable-libopencolorio, zscale needs --enable-libzimg, "
+                "and drawtext needs --enable-libfreetype and --enable-libharfbuzz."
             )
     except subprocess.CalledProcessError:
         logger.warning(f"Could not verify FFmpeg filters via '{ffmpeg_bin} -filters'. Proceeding anyway.")
@@ -56,8 +57,9 @@ def get_filter_complex(ctx: DailiesContext) -> str:
     """
     Generates the core FFmpeg filtergraph string from the context.
     """
+    output_conversion = build_output_conversion_filter(ctx)
     if not ctx.slate_config.enabled:
-        return build_video_filtergraph(ctx, "[0:v]")
+        return f"{build_video_filtergraph(ctx, '[0:v]')};[video_out]{output_conversion}[final_v]"
 
     # Determine the middle frame for the PIP thumbnail
     mid_frame = get_middle_frame_index(
@@ -76,8 +78,8 @@ def get_filter_complex(ctx: DailiesContext) -> str:
         video_fg = build_video_filtergraph(ctx, "[0:v]")
         split_node = ""
     
-    # concat slate video map and main video map
-    return f"{split_node}{slate_fg};{video_fg};[slate_out][video_out]concat=n=2:v=1:a=0[final_v]"
+    # concat slate video map and main video map, then convert both to the encoder's format at once
+    return f"{split_node}{slate_fg};{video_fg};[slate_out][video_out]concat=n=2:v=1:a=0,{output_conversion}[final_v]"
 
 def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, filter_complex_str: str = None) -> list[str]:
     """
@@ -87,9 +89,13 @@ def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, fi
     ffmpeg_bin = ctx.globals_config.ffmpeg_bin or os.environ.get("FFMPEG_BIN", "ffmpeg")
 
     # 0. Validate requirements
-    # If using slates or burn-ins, we MUST have drawtext support
+    # Colour conversions are done with zscale; slates and burn-ins need drawtext
+    required_filters = ["zscale"]
     if ctx.slate_config.enabled or ctx.burnin_config.layout:
-        check_ffmpeg_filters(ffmpeg_bin, ["drawtext"])
+        required_filters.append("drawtext")
+    if ctx.ocio_settings.enabled:
+        required_filters.append("ocio")
+    check_ffmpeg_filters(ffmpeg_bin, required_filters)
     
     cmd = [
         ffmpeg_bin, "-y"
@@ -121,9 +127,8 @@ def build_ffmpeg_command(ctx: DailiesContext, filter_script_path: str = None, fi
         # Generate on the fly if not provided
         cmd.extend(["-filter_complex", get_filter_complex(ctx)])
         
-    out_map = "[final_v]" if ctx.slate_config.enabled else "[video_out]"
     cmd.extend([
-        "-map", out_map,
+        "-map", "[final_v]",
     ])
     
     # Map Output Codec Profile

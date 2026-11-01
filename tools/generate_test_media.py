@@ -10,6 +10,8 @@ def generate_test_media(output_dir: str, frames: int = 24, fps: int = 24):
     1. EXR sequence starting at frame 1001
     2. Quicktime file WITHOUT timecode/reel
     3. Quicktime file WITH timecode/reel
+    4. EXR sequence in a shot/version directory structure
+    5. Portrait (1080x1920) and 2.35:1 scope (2048x872) EXR sequences, to test pillarboxing and letterboxing
     """
     os.makedirs(output_dir, exist_ok=True)
     
@@ -56,6 +58,18 @@ def generate_test_media(output_dir: str, frames: int = 24, fps: int = 24):
         complex_pattern
     ]
     
+    # 5. Non-16:9 EXR sequences, padded to fit the output
+    aspect_cmds = []
+    for name, size in (("portrait_1001", "1080x1920"), ("scope_1001", "2048x872")):
+        aspect_dir = os.path.join(output_dir, name)
+        os.makedirs(aspect_dir, exist_ok=True)
+        aspect_cmds.append((aspect_dir, [
+            "ffmpeg", "-y",
+            "-f", "lavfi", "-i", f"testsrc2=size={size}:rate={fps}:duration={frames/fps}",
+            "-start_number", "1001",
+            os.path.join(aspect_dir, "test_seq.%04d.exr")
+        ]))
+    
     print(f"Generating EXR sequence (1001) to {exr_dir}...")
     subprocess.run(cmd_exr, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
@@ -67,6 +81,10 @@ def generate_test_media(output_dir: str, frames: int = 24, fps: int = 24):
 
     print(f"Generating Complex Shot/Version Sequence to {complex_dir}...")
     subprocess.run(cmd_complex, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    for aspect_dir, cmd_aspect in aspect_cmds:
+        print(f"Generating {os.path.basename(aspect_dir)} EXR sequence to {aspect_dir}...")
+        subprocess.run(cmd_aspect, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
     print("\nRequested test media variants generated successfully!")
 

@@ -53,6 +53,10 @@ class InputSettings:
     cropheight: Optional[int] = None
     cropx: Optional[int] = None
     cropy: Optional[int] = None
+    # Colour tags of the source as reported by ffprobe (None if not probed, "unknown" if untagged)
+    pix_fmt: Optional[str] = None
+    color_space: Optional[str] = None
+    color_range: Optional[str] = None
 
 @dataclasses.dataclass
 class OutputSettings:
